@@ -1,0 +1,54 @@
+{
+  "name": "study-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI study agent: upload lecture slides and notes, generate technical study guides with diagrams, chat with a tutor, take adaptive quizzes, and review.",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node dist-server/server/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "node --import tsx --test \"server/**/*.test.ts\" \"src/**/*.test.ts\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "docx": "^9.7.1",
+    "dotenv": "^18.0.1",
+    "express": "^5.2.1",
+    "jimp": "^1.6.1",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.47.0",
+    "mammoth": "^1.12.3",
+    "mermaid": "^12.0.0",
+    "multer": "^2.4.0",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/mdast": "^4.0.4",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
