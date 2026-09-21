@@ -123,15 +123,3 @@ npm run build      # dist/ (client) + dist-server/ (server)
 ```
 
 Layout: `src/` React client, `server/` Express API, `shared/` types used by both.
-
-## Moving this folder to its own repository
-
-This app is self-contained. To give it its own GitHub repository:
-
-```bash
-# from a clone of prereq-mvp, on the branch that contains study-agent/
-git subtree split --prefix=study-agent -b study-agent-main
-git push git@github.com:<you>/study-agent.git study-agent-main:main
-```
-
-Then move `.github/workflows/study-agent-ci.yml` into the new repo's `.github/workflows/` and drop the `working-directory` / `paths` settings.
