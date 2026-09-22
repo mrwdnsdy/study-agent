@@ -179,6 +179,8 @@ export interface AnswerResponse {
 }
 
 export interface ServerConfigResponse {
+  /** Persona name of the study agent. */
+  agentName: string;
   /** Model used for the study guide (shown in the header). */
   model: string;
   /** Model per task. */

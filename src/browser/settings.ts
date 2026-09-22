@@ -1,4 +1,4 @@
-import { AGENT_TASKS, DEFAULT_ESCALATION_MODEL, isEffort, resolveTaskModels, type Effort } from '../../shared/agent/constants';
+import { AGENT_TASKS, DEFAULT_AGENT_NAME, DEFAULT_ESCALATION_MODEL, isEffort, resolveTaskModels, type Effort } from '../../shared/agent/constants';
 import type { TaskModels } from '../../shared/types';
 
 /**
@@ -31,6 +31,8 @@ export interface SiteConfig {
   escalationModel?: string;
   effort?: Effort;
   notice?: string;
+  /** Persona name of the study agent (default: Kiiku). */
+  agentName?: string;
 }
 
 export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'none';
@@ -38,6 +40,7 @@ export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'none';
 /** Fully resolved values used to call Claude. */
 export interface EffectiveSettings {
   apiKey: string;
+  agentName: string;
   models: TaskModels;
   escalationModel?: string;
   effort: Effort;
@@ -76,6 +79,7 @@ export async function loadSiteConfig(): Promise<SiteConfig> {
       escalationModel: cleanString(raw.escalationModel) || undefined,
       effort: isEffort(raw.effort) ? raw.effort : undefined,
       notice: cleanString(raw.notice) || undefined,
+      agentName: cleanString(raw.agentName) || undefined,
     };
   } catch {
     siteConfig = {};
@@ -131,7 +135,7 @@ export function effectiveSettings(saved: BrowserSettings = loadSettings(), site:
   const escalationModel =
     site.escalationModel === undefined ? DEFAULT_ESCALATION_MODEL : site.escalationModel.toLowerCase() === 'off' ? undefined : site.escalationModel;
   const effort: Effort = saved.effort || site.effort || 'high';
-  const base = { models, escalationModel, effort };
+  const base = { models, escalationModel, effort, agentName: site.agentName ?? DEFAULT_AGENT_NAME };
   if (saved.baseUrl) {
     return { ...base, apiKey: saved.apiKey, baseUrl: saved.baseUrl, accessCode: saved.accessCode, source: 'own-proxy' };
   }

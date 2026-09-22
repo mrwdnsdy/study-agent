@@ -3,7 +3,7 @@
 An AI study companion powered by **Claude Opus**. Upload your lecture slides, notes and readings, and Study Agent will:
 
 - **Write a highly technical study guide** that walks through every slide in order: concepts explained in depth, best practices, gold-standard tips, common pitfalls, exam alerts, comparison tables, a cheat sheet, a glossary and self-check questions. Diagrams are drawn with Mermaid and rendered in colour, so visual learners get flowcharts, mind maps, sequence diagrams and timelines instead of walls of text. The document streams in live as it is written.
-- **Chat with a study agent** that has read all of your materials. Ask it to explain slide 12, compare two concepts, or "add a worked example to the TCP section". It edits the study guide in place, rewrites it on request, and can start a quiz straight from the conversation.
+- **Chat with Kiiku, your study agent**, who has read all of your materials. Ask it to explain slide 12, compare two concepts, or "add a worked example to the TCP section". It edits the study guide in place, rewrites it on request, and can start a quiz straight from the conversation.
 - **Run interactive quizzes**: multiple choice, true/false and short-answer questions generated from your materials, one at a time, with a hint, a source reference (e.g. "Slide 14"), and **immediate feedback** on every answer. Short answers are graded on meaning, not wording.
 - **Produce a post-quiz review session**: a scorecard by topic, a question-by-question breakdown of what went wrong and why, the misconceptions behind the mistakes, a targeted revision plan, and retry prompts. From there you can quiz yourself on your weak areas or discuss the mistakes in chat.
 - **Export** the guide (and reviews) as a **Word document** (diagrams included) that opens in Google Docs, as a printable page (save as PDF) or as a self-contained HTML file. With a Google OAuth client ID configured it uploads straight to your Drive as a Google Doc.
@@ -75,7 +75,7 @@ An API key must never be put into the page itself: the repository and the page a
 2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
 3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
 
-`config.json` fields: `proxyUrl`, `accessCode`, `models` (per task: `guide`, `chat`, `quiz`, `grading`, `review`), `escalationModel`, `effort` (`low` … `max`) and `notice` (a sentence shown in Settings, e.g. who is paying for usage). Visitors can still type one model for every task in Settings.
+`config.json` fields: `proxyUrl`, `accessCode`, `models` (per task: `guide`, `chat`, `quiz`, `grading`, `review`), `escalationModel`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage) and `agentName` (the persona, default `Kiiku`). Visitors can still type one model for every task in Settings.
 
 ### Or let each visitor bring their own key
 
@@ -96,6 +96,7 @@ All settings live in `.env` (see `.env.example`).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | – | Required. Your Anthropic API key (server-side only, never sent to the browser). |
+| `AGENT_NAME` | `Kiiku` | Persona name of the study agent, shown in the app and used in the prompts. |
 | `ANTHROPIC_MODEL` | – | One model for every task. Leave unset to use the per-task defaults below. |
 | `ANTHROPIC_MODEL_GUIDE` | `claude-opus-5` | Model that writes the study guide. |
 | `ANTHROPIC_MODEL_CHAT` / `_QUIZ` / `_GRADING` / `_REVIEW` | `claude-sonnet-5` | Models for the tutor chat, quiz creation, short-answer grading and the post-quiz review. |

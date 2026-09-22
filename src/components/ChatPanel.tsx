@@ -39,6 +39,7 @@ interface Props {
   onStop: () => void;
   onClear: () => void;
   onGenerateGuide: () => void;
+  agentName: string;
 }
 
 function ToolChips({ events }: { events: { summary: string }[] | undefined }) {
@@ -73,7 +74,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend, onStop, onClear, onGenerateGuide }: Props) {
+export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend, onStop, onClear, onGenerateGuide, agentName }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [stick, setStick] = useState(true);
@@ -120,7 +121,7 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
     <div className="chat__inner">
       <div className="chat__header">
         <div>
-          <strong>Study agent</strong>
+          <strong>{agentName}</strong>
           <div className="muted small">Ask anything about your materials. It can edit the guide and build quizzes.</div>
         </div>
         <button
@@ -148,7 +149,7 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
           <div className="chat__empty">
             <Bot size={28} />
             <p>
-              Hi! I have your materials{session.materials.length ? '' : ' (none uploaded yet)'}. Ask me to explain a slide, build the study guide,
+              Hi, I&apos;m {agentName}! I have your materials{session.materials.length ? '' : ' (none uploaded yet)'}. Ask me to explain a slide, build the study guide,
               or quiz you. I give feedback on every answer.
             </p>
           </div>

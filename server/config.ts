@@ -6,7 +6,7 @@ const num = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-import { DEFAULT_ESCALATION_MODEL, isEffort, resolveTaskModels, type Effort } from '../shared/agent/core.js';
+import { DEFAULT_AGENT_NAME, DEFAULT_ESCALATION_MODEL, isEffort, resolveTaskModels, type Effort } from '../shared/agent/core.js';
 
 export type { Effort };
 
@@ -16,6 +16,8 @@ const escalationFromEnv = env('ANTHROPIC_ESCALATION_MODEL');
 
 export const config = {
   port: num(process.env.PORT, 3001),
+  /** Persona name of the study agent. */
+  agentName: env('AGENT_NAME') ?? DEFAULT_AGENT_NAME,
   /** Model per task. ANTHROPIC_MODEL applies to every task unless a per-task variable overrides it. */
   models: resolveTaskModels(
     {

@@ -12,6 +12,9 @@ export const TASK_LABELS: Record<AgentTask, string> = {
   review: 'Quiz review',
 };
 
+/** The study agent's persona name (shown in the UI and used in the prompts). */
+export const DEFAULT_AGENT_NAME = 'Kiiku';
+
 /** Fallback when nothing else is configured. */
 export const DEFAULT_MODEL = 'claude-opus-5';
 /** Per-task defaults: the flagship study guide on Opus 5, the lighter tasks on Sonnet 5. */

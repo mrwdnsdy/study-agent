@@ -19,6 +19,7 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/config', async (_req, res) => {
   const body: ServerConfigResponse = {
+    agentName: config.agentName,
     model: config.models.guide,
     models: config.models,
     escalationModel: config.escalationModel,

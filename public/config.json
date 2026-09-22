@@ -10,5 +10,6 @@
   },
   "escalationModel": "claude-fable-5-1",
   "effort": "high",
-  "notice": ""
+  "notice": "",
+  "agentName": "Kiiku"
 }

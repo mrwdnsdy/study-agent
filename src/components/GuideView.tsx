@@ -13,6 +13,7 @@ interface Props {
   busy: boolean;
   models: TaskModels | null;
   escalationModel?: string;
+  agentName: string;
   onGenerate: (prompt: string, quality: GuideQuality) => void;
   onStop: () => void;
   onToast: (toast: Toast) => void;
@@ -29,6 +30,7 @@ function PromptForm({
   initialQuality,
   guideModel,
   escalationModel,
+  agentName,
   hasMaterials,
   busy,
   regenerate,
@@ -39,6 +41,7 @@ function PromptForm({
   initialQuality: GuideQuality;
   guideModel?: string;
   escalationModel?: string;
+  agentName: string;
   hasMaterials: boolean;
   busy: boolean;
   regenerate: boolean;
@@ -55,7 +58,7 @@ function PromptForm({
         if (prompt.trim()) onSubmit(prompt.trim(), escalationModel ? quality : 'standard');
       }}
     >
-      <label htmlFor="guide-prompt">Tell the study agent what you need</label>
+      <label htmlFor="guide-prompt">Tell {agentName} what you need</label>
       <textarea id="guide-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6} />
       {!hasMaterials && (
         <p className="notice notice--warn">
@@ -85,7 +88,7 @@ function PromptForm({
   );
 }
 
-export function GuideView({ session, stream, busy, models, escalationModel, onGenerate, onStop, onToast }: Props) {
+export function GuideView({ session, stream, busy, models, escalationModel, agentName, onGenerate, onStop, onToast }: Props) {
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showToc, setShowToc] = useState(true);
   const streamingGuide = stream.guideDraft !== null;
@@ -133,7 +136,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, onGe
           </div>
           <h1>Your study guide starts here</h1>
           <p className="muted">
-            Upload your lecture slides and notes, then describe the guide you want. The study agent reads every slide, explains each concept
+            Upload your lecture slides and notes, then describe the guide you want. {agentName} reads every slide, explains each concept
             in depth with gold-standard tips, diagrams and tables, and streams the document here as it writes.
           </p>
           <PromptForm
@@ -141,6 +144,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, onGe
             initialQuality="standard"
             guideModel={models?.guide}
             escalationModel={escalationModel}
+            agentName={agentName}
             hasMaterials={hasMaterials}
             busy={busy}
             regenerate={false}
@@ -178,6 +182,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, onGe
             initialQuality={session.guide.model && session.guide.model === escalationModel ? 'max' : 'standard'}
             guideModel={models?.guide}
             escalationModel={escalationModel}
+            agentName={agentName}
             hasMaterials={hasMaterials}
             busy={busy}
             regenerate

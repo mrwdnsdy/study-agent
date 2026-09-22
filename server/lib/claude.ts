@@ -32,7 +32,7 @@ export function getClient(): Anthropic {
 }
 
 function context(): core.AgentContext {
-  return { client: getClient(), models: config.models, effort: config.effort, escalationModel: config.escalationModel };
+  return { client: getClient(), models: config.models, effort: config.effort, escalationModel: config.escalationModel, agentName: config.agentName };
 }
 
 type Send = (event: StreamEvent) => void;

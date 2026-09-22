@@ -22,7 +22,7 @@ import { wordCount } from './guideEdits.js';
 import {
   GRADER_SYSTEM,
   MATERIALS_ACK,
-  SYSTEM_PROMPT,
+  systemPrompt,
   gradePrompt,
   guideInstruction,
   materialsPreamble,
@@ -31,10 +31,11 @@ import {
   type MaterialInfo,
 } from './prompts.js';
 
-import { type Effort } from './constants.js';
+import { DEFAULT_AGENT_NAME, type Effort } from './constants.js';
 
 export {
   AGENT_TASKS,
+  DEFAULT_AGENT_NAME,
   DEFAULT_ESCALATION_MODEL,
   DEFAULT_MODEL,
   DEFAULT_TASK_MODELS,
@@ -52,6 +53,8 @@ export interface AgentContext {
   effort: Effort;
   /** Tried when a task's model declines or returns nothing; also used for maximum-quality guides. */
   escalationModel?: string;
+  /** Persona name used in the system prompt (default: Kiiku). */
+  agentName?: string;
 }
 
 /** The escalation model, when one is configured and differs from the model that just ran. */
@@ -258,7 +261,7 @@ function baseParams(ctx: AgentContext, model: string, messages: Anthropic.Messag
   return {
     model,
     max_tokens: maxTokens,
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }],
+    system: [{ type: 'text', text: systemPrompt(ctx.agentName ?? DEFAULT_AGENT_NAME), cache_control: { type: 'ephemeral', ttl: '1h' } }],
     tools: TOOLS,
     thinking: { type: 'adaptive', display: 'summarized' },
     output_config: { effort: ctx.effort },

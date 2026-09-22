@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, ClipboardList, FolderOpen, GraduationCap, MessageSquare, Settings, X } from 'lucide-react';
 import { DEFAULT_GUIDE_PROMPT, type AnswerRequest, type ChatMessage, type GuideQuality, type QuizConfig, type StreamEvent } from '../shared/types';
 import { api } from './lib/api';
+import { DEFAULT_AGENT_NAME } from '../shared/agent/constants';
 import { getMode } from './lib/mode';
 import { ChatPanel } from './components/ChatPanel';
 import { GuideView } from './components/GuideView';
@@ -301,6 +302,7 @@ export default function App() {
   };
 
   const { session, stream, tab, config } = state;
+  const agentName = config?.agentName ?? DEFAULT_AGENT_NAME;
 
   return (
     <div className="app">
@@ -400,6 +402,7 @@ export default function App() {
                   busy={busy}
                   models={config?.models ?? null}
                   escalationModel={config?.escalationModel}
+                  agentName={agentName}
                   onGenerate={generateGuide}
                   onStop={stopStream}
                   onToast={toast}
@@ -456,6 +459,7 @@ export default function App() {
               onStop={stopStream}
               onClear={clearChat}
               onGenerateGuide={() => generateGuide(session.guide ? (session.guide.prompt.split('\n\nRevision instructions:')[0] ?? DEFAULT_GUIDE_PROMPT) : DEFAULT_GUIDE_PROMPT)}
+              agentName={agentName}
             />
           )}
         </aside>

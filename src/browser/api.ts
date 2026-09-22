@@ -66,7 +66,7 @@ function context(): core.AgentContext {
     timeout: 30 * 60 * 1000,
     maxRetries: 2,
   });
-  return { client, models: settings.models, effort: settings.effort, escalationModel: settings.escalationModel };
+  return { client, models: settings.models, effort: settings.effort, escalationModel: settings.escalationModel, agentName: settings.agentName };
 }
 
 /** Runs a streaming operation, turning SDK errors into the same friendly messages the server sends. */
@@ -163,6 +163,7 @@ export const browserApi: Api = {
   async config(): Promise<ServerConfigResponse> {
     const settings = effectiveSettings();
     return {
+      agentName: settings.agentName,
       model: settings.models.guide,
       models: settings.models,
       escalationModel: settings.escalationModel,
