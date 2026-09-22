@@ -203,13 +203,13 @@ export function Sidebar({
         {config ? (
           getMode() === 'browser' ? (
             <>
-              Browser mode · model <code>{config.model}</code>
+              Browser mode · guide on <code>{config.models.guide}</code>, other tasks on <code>{config.models.chat}</code>
               {effectiveSettings().source === 'site-proxy' ? ' · Claude access provided by this site' : ' · your own Claude key'} · your files
               and guides stay on this device
             </>
           ) : (
             <>
-              Model <code>{config.model}</code>
+              Guide on <code>{config.models.guide}</code>, other tasks on <code>{config.models.chat}</code>
               {config.sofficeAvailable ? ' · slide rendering on' : ' · slide text extraction (install LibreOffice to render slides)'}
             </>
           )

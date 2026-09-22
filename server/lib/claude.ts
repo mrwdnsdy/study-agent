@@ -32,7 +32,7 @@ export function getClient(): Anthropic {
 }
 
 function context(): core.AgentContext {
-  return { client: getClient(), model: config.model, effort: config.effort };
+  return { client: getClient(), models: config.models, effort: config.effort, escalationModel: config.escalationModel };
 }
 
 type Send = (event: StreamEvent) => void;
@@ -76,6 +76,7 @@ export async function generateGuide(opts: {
   prompt: string;
   send: Send;
   signal?: AbortSignal;
+  model?: string;
 }): Promise<core.DocumentResult> {
   return core.generateGuide(context(), { ...opts, materials: await materialsInput(opts.materials) });
 }

@@ -1079,6 +1079,24 @@ fieldset legend {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.prompt-form__quality {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.prompt-form__quality select {
+  width: auto;
+  max-width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 /* ---------------------------------------------------------------------------

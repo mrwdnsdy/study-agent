@@ -1,7 +1,14 @@
 {
-  "proxyUrl": "",
+  "proxyUrl": "https://study-agent-proxy.sdnbrothersinc.workers.dev",
   "accessCode": "",
-  "model": "claude-opus-5",
+  "models": {
+    "guide": "claude-opus-5",
+    "chat": "claude-sonnet-5",
+    "quiz": "claude-sonnet-5",
+    "grading": "claude-sonnet-5",
+    "review": "claude-sonnet-5"
+  },
+  "escalationModel": "claude-fable-5-1",
   "effort": "high",
   "notice": ""
 }

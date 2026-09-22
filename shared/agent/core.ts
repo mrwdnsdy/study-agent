@@ -14,6 +14,7 @@ import type {
   QuestionType,
   StreamEvent,
   StudyGuide,
+  TaskModels,
   ToolEvent,
   UsageInfo,
 } from '../types.js';
@@ -32,12 +33,31 @@ import {
 
 import { type Effort } from './constants.js';
 
-export { DEFAULT_MODEL, EFFORTS, isEffort, type Effort } from './constants.js';
+export {
+  AGENT_TASKS,
+  DEFAULT_ESCALATION_MODEL,
+  DEFAULT_MODEL,
+  DEFAULT_TASK_MODELS,
+  EFFORTS,
+  TASK_LABELS,
+  isEffort,
+  resolveTaskModels,
+  type Effort,
+} from './constants.js';
 
 export interface AgentContext {
   client: Anthropic;
-  model: string;
+  /** Model per kind of call (guide, chat, quiz, grading, review). */
+  models: TaskModels;
   effort: Effort;
+  /** Tried when a task's model declines or returns nothing; also used for maximum-quality guides. */
+  escalationModel?: string;
+}
+
+/** The escalation model, when one is configured and differs from the model that just ran. */
+function escalationFor(ctx: AgentContext, model: string): string | undefined {
+  const candidate = ctx.escalationModel?.trim();
+  return candidate && candidate !== model ? candidate : undefined;
 }
 
 /** Content blocks for the materials plus the short descriptions the prompts need. */
@@ -234,9 +254,9 @@ function historyMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
-function baseParams(ctx: AgentContext, messages: Anthropic.MessageParam[], maxTokens: number): Anthropic.MessageStreamParams {
+function baseParams(ctx: AgentContext, model: string, messages: Anthropic.MessageParam[], maxTokens: number): Anthropic.MessageStreamParams {
   return {
-    model: ctx.model,
+    model,
     max_tokens: maxTokens,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }],
     tools: TOOLS,
@@ -302,52 +322,77 @@ export interface DocumentResult {
   markdown: string;
   thinking: string;
   usage: UsageInfo;
+  /** Model that produced the document (the escalation model when the first choice declined). */
+  model: string;
 }
 
+/**
+ * Streams a long document, continuing past max_tokens cut-offs. If the model
+ * declines or returns nothing before any text was streamed, the escalation
+ * model gets one attempt (nothing has reached the UI yet, so it can start over).
+ */
 async function streamDocument(
   ctx: AgentContext,
-  messages: Anthropic.MessageParam[],
+  model: string,
+  initialMessages: Anthropic.MessageParam[],
   maxTokens: number,
   deltaEvent: 'guide_delta' | 'text',
   what: string,
   send: Send,
   signal?: AbortSignal,
 ): Promise<DocumentResult> {
-  let markdown = '';
-  let thinking = '';
   const usage = emptyUsage();
-  for (let round = 0; round < 4; round++) {
-    const message = await streamTurn(
-      ctx,
-      baseParams(ctx, messages, maxTokens),
-      {
-        onText: (t) => {
-          markdown += t;
-          send({ type: deltaEvent, text: t });
+  let thinking = '';
+
+  const attempt = async (activeModel: string): Promise<{ markdown: string; refusal: Anthropic.Message | null }> => {
+    const messages = [...initialMessages];
+    let markdown = '';
+    for (let round = 0; round < 4; round++) {
+      const message = await streamTurn(
+        ctx,
+        baseParams(ctx, activeModel, messages, maxTokens),
+        {
+          onText: (t) => {
+            markdown += t;
+            send({ type: deltaEvent, text: t });
+          },
+          onThinking: (t) => {
+            thinking += t;
+            send({ type: 'thinking', text: t });
+          },
         },
-        onThinking: (t) => {
-          thinking += t;
-          send({ type: 'thinking', text: t });
-        },
-      },
-      signal,
-    );
-    addUsage(usage, message);
-    if (message.stop_reason === 'refusal') throw refusalError(message, what);
-    if (message.stop_reason !== 'max_tokens') break;
-    messages.push({ role: 'assistant', content: message.content }, { role: 'user', content: CONTINUE_PROMPT });
-    send({ type: 'status', text: 'Continuing…' });
+        signal,
+      );
+      addUsage(usage, message);
+      if (message.stop_reason === 'refusal') return { markdown, refusal: message };
+      if (message.stop_reason !== 'max_tokens') break;
+      messages.push({ role: 'assistant', content: message.content }, { role: 'user', content: CONTINUE_PROMPT });
+      send({ type: 'status', text: 'Continuing…' });
+    }
+    return { markdown, refusal: null };
+  };
+
+  let activeModel = model;
+  let result = await attempt(activeModel);
+  const fallback = escalationFor(ctx, activeModel);
+  if (fallback && !result.markdown.trim()) {
+    send({ type: 'status', text: `${activeModel} ${result.refusal ? 'declined' : 'returned nothing'}; trying ${fallback}…` });
+    activeModel = fallback;
+    result = await attempt(activeModel);
   }
-  if (!markdown.trim()) throw new Error(`Claude returned an empty response while trying to ${what}. Please try again.`);
-  return { markdown: `${markdown.trim()}\n`, thinking, usage };
+  if (result.refusal && !result.markdown.trim()) throw refusalError(result.refusal, what);
+  if (result.refusal) throw refusalError(result.refusal, `finish the response while trying to ${what}`);
+  if (!result.markdown.trim()) throw new Error(`Claude returned an empty response while trying to ${what}. Please try again.`);
+  return { markdown: `${result.markdown.trim()}\n`, thinking, usage, model: activeModel };
 }
 
 export async function generateGuide(
   ctx: AgentContext,
-  opts: { materials: MaterialsInput; prompt: string; send: Send; signal?: AbortSignal },
+  opts: { materials: MaterialsInput; prompt: string; send: Send; signal?: AbortSignal; /** Overrides ctx.models.guide, e.g. the escalation model for maximum quality. */ model?: string },
 ): Promise<DocumentResult> {
   const messages = [...buildPrefix(opts.materials, null), { role: 'user' as const, content: guideInstruction(opts.prompt) }];
-  return streamDocument(ctx, messages, 64_000, 'guide_delta', 'write the study guide', opts.send, opts.signal);
+  const model = opts.model?.trim() || ctx.models.guide;
+  return streamDocument(ctx, model, messages, 64_000, 'guide_delta', 'write the study guide', opts.send, opts.signal);
 }
 
 export async function generateReview(
@@ -355,7 +400,7 @@ export async function generateReview(
   opts: { materials: MaterialsInput; guide: StudyGuide | null; quiz: Quiz; send: Send; signal?: AbortSignal },
 ): Promise<DocumentResult> {
   const messages = [...buildPrefix(opts.materials, opts.guide), { role: 'user' as const, content: reviewInstruction(opts.quiz) }];
-  return streamDocument(ctx, messages, 32_000, 'text', 'write the review', opts.send, opts.signal);
+  return streamDocument(ctx, ctx.models.review, messages, 32_000, 'text', 'write the review', opts.send, opts.signal);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,11 +509,12 @@ export async function runChat(
   let thinking = '';
   const toolEvents: ToolEvent[] = [];
   const usage = emptyUsage();
+  let model = ctx.models.chat;
 
   for (let iteration = 0; iteration < 8; iteration++) {
     const message = await streamTurn(
       ctx,
-      baseParams(ctx, messages, 32_000),
+      baseParams(ctx, model, messages, 32_000),
       {
         onText: (t) => {
           text += t;
@@ -484,7 +530,15 @@ export async function runChat(
     );
     addUsage(usage, message);
 
-    if (message.stop_reason === 'refusal') throw refusalError(message, 'answer this');
+    if (message.stop_reason === 'refusal') {
+      const fallback = escalationFor(ctx, model);
+      if (fallback && !text.trim()) {
+        opts.send({ type: 'status', text: `${model} declined; trying ${fallback}…` });
+        model = fallback;
+        continue;
+      }
+      throw refusalError(message, 'answer this');
+    }
     if (message.stop_reason === 'pause_turn') {
       messages.push({ role: 'assistant', content: message.content });
       continue;
@@ -533,10 +587,17 @@ export async function requestQuiz(
   ];
   let thinking = '';
   const usage = emptyUsage();
-  for (let attempt = 0; attempt < 3; attempt++) {
+  let model = ctx.models.quiz;
+  const fallback = escalationFor(ctx, model);
+  const maxAttempts = fallback ? 4 : 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt === 3 && fallback && model !== fallback) {
+      opts.send({ type: 'status', text: `Trying ${fallback}…` });
+      model = fallback;
+    }
     const message = await streamTurn(
       ctx,
-      baseParams(ctx, messages, 32_000),
+      baseParams(ctx, model, messages, 32_000),
       {
         onThinking: (t) => {
           thinking += t;
@@ -547,7 +608,14 @@ export async function requestQuiz(
       opts.signal,
     );
     addUsage(usage, message);
-    if (message.stop_reason === 'refusal') throw refusalError(message, 'create the quiz');
+    if (message.stop_reason === 'refusal') {
+      if (fallback && model !== fallback) {
+        opts.send({ type: 'status', text: `${model} declined; trying ${fallback}…` });
+        model = fallback;
+        continue;
+      }
+      throw refusalError(message, 'create the quiz');
+    }
     const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
     if (message.stop_reason === 'max_tokens' && toolUses.length > 0) {
       throw new Error('The quiz was too long to generate in one go. Try fewer questions.');
@@ -648,14 +716,21 @@ export async function gradeShortAnswer(
   question: QuizQuestion,
   studentAnswer: string,
 ): Promise<{ correct: boolean; score: number; feedback: string }> {
-  const response = await ctx.client.messages.parse({
-    model: ctx.model,
-    max_tokens: 4000,
-    system: GRADER_SYSTEM,
-    output_config: { effort: 'medium', format: zodOutputFormat(GradeOutput) },
-    messages: [{ role: 'user', content: gradePrompt(question, studentAnswer) }],
-  });
-  if (response.stop_reason === 'refusal') throw refusalError(response, 'grade this answer');
+  const grade = (model: string) =>
+    ctx.client.messages.parse({
+      model,
+      max_tokens: 4000,
+      system: GRADER_SYSTEM,
+      output_config: { effort: 'medium', format: zodOutputFormat(GradeOutput) },
+      messages: [{ role: 'user', content: gradePrompt(question, studentAnswer) }],
+    });
+  let response = await grade(ctx.models.grading);
+  if (response.stop_reason === 'refusal') {
+    const fallback = escalationFor(ctx, ctx.models.grading);
+    if (!fallback) throw refusalError(response, 'grade this answer');
+    response = await grade(fallback);
+    if (response.stop_reason === 'refusal') throw refusalError(response, 'grade this answer');
+  }
   const parsed = response.parsed_output;
   if (!parsed) throw new Error('Could not grade the answer. Please try again.');
   const score = Math.max(0, Math.min(100, Math.round(parsed.score)));

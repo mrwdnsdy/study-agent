@@ -19,7 +19,9 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/config', async (_req, res) => {
   const body: ServerConfigResponse = {
-    model: config.model,
+    model: config.models.guide,
+    models: config.models,
+    escalationModel: config.escalationModel,
     hasApiKey: config.hasApiKey,
     sofficeAvailable: Boolean(await sofficePath()),
     maxUploadMb: config.maxUploadMb,
@@ -77,6 +79,6 @@ app.use((err: HttpError, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Study Agent API listening on http://localhost:${config.port} (model: ${config.model}, effort: ${config.effort}, data: ${config.dataDir})`);
+  console.log(`Study Agent API listening on http://localhost:${config.port} (guide: ${config.models.guide}, chat: ${config.models.chat}, escalation: ${config.escalationModel ?? 'off'}, effort: ${config.effort}, data: ${config.dataDir})`);
   if (!config.hasApiKey) console.warn('ANTHROPIC_API_KEY is not set: Claude features will fail until it is configured in .env');
 });

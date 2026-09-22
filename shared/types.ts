@@ -5,6 +5,12 @@
 
 export type MaterialKind = 'pdf' | 'pptx' | 'docx' | 'image' | 'text';
 
+/** The kinds of Claude call the agent makes; each can run on its own model. */
+export type AgentTask = 'guide' | 'chat' | 'quiz' | 'grading' | 'review';
+export type TaskModels = Record<AgentTask, string>;
+/** "max" writes the study guide with the escalation model (Claude Fable): best quality, about twice the cost. */
+export type GuideQuality = 'standard' | 'max';
+
 export interface MaterialMeta {
   id: string;
   /** Original filename as uploaded. */
@@ -55,6 +61,8 @@ export interface StudyGuide {
   updatedAt: string;
   /** The user instructions that produced this guide (kept for regeneration). */
   prompt: string;
+  /** Model that wrote this version. */
+  model?: string;
 }
 
 export type QuestionType = 'multiple_choice' | 'true_false' | 'short_answer';
@@ -150,6 +158,7 @@ export type StreamEvent =
 
 export interface GenerateRequest {
   prompt: string;
+  quality?: GuideQuality;
 }
 
 export interface ChatRequest {
@@ -170,7 +179,12 @@ export interface AnswerResponse {
 }
 
 export interface ServerConfigResponse {
+  /** Model used for the study guide (shown in the header). */
   model: string;
+  /** Model per task. */
+  models: TaskModels;
+  /** Model tried when a task's model declines, and used for maximum-quality guides. */
+  escalationModel?: string;
   hasApiKey: boolean;
   sofficeAvailable: boolean;
   maxUploadMb: number;

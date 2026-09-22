@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, ClipboardList, FolderOpen, GraduationCap, MessageSquare, Settings, X } from 'lucide-react';
-import { DEFAULT_GUIDE_PROMPT, type AnswerRequest, type ChatMessage, type QuizConfig, type StreamEvent } from '../shared/types';
+import { DEFAULT_GUIDE_PROMPT, type AnswerRequest, type ChatMessage, type GuideQuality, type QuizConfig, type StreamEvent } from '../shared/types';
 import { api } from './lib/api';
 import { getMode } from './lib/mode';
 import { ChatPanel } from './components/ChatPanel';
@@ -158,11 +158,11 @@ export default function App() {
     return state.session.id;
   };
 
-  const generateGuide = (prompt: string) => {
+  const generateGuide = (prompt: string, quality: GuideQuality = 'standard') => {
     const id = requireSessionId();
     if (!id) return;
     dispatch({ type: 'tab', tab: 'guide' });
-    void runStream('generate', (onEvent, signal) => api.generateGuide(id, prompt, onEvent, signal));
+    void runStream('generate', (onEvent, signal) => api.generateGuide(id, prompt, onEvent, signal, quality));
   };
 
   const sendChat = (message: string) => {
@@ -345,7 +345,11 @@ export default function App() {
           ))}
         </nav>
         <div className="topbar__meta">
-          {config && <span className="pill pill--muted">{config.model}</span>}
+          {config && (
+            <span className="pill pill--muted" title={`Study guide: ${config.models.guide} · chat, quizzes, grading, reviews: ${config.models.chat}`}>
+              {config.model}
+            </span>
+          )}
           {state.lastUsage && (
             <span className="pill pill--muted" title="Tokens used by the last request (input / output / cache reads)">
               {state.lastUsage.inputTokens.toLocaleString()} in · {state.lastUsage.outputTokens.toLocaleString()} out ·{' '}
@@ -390,7 +394,16 @@ export default function App() {
           {session ? (
             <>
               {tab === 'guide' && (
-                <GuideView session={session} stream={stream} busy={busy} onGenerate={generateGuide} onStop={stopStream} onToast={toast} />
+                <GuideView
+                  session={session}
+                  stream={stream}
+                  busy={busy}
+                  models={config?.models ?? null}
+                  escalationModel={config?.escalationModel}
+                  onGenerate={generateGuide}
+                  onStop={stopStream}
+                  onToast={toast}
+                />
               )}
               {tab === 'quiz' && (
                 <QuizPanel

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { BookOpen, ListTree, Loader2, RefreshCw, Sparkles, Square } from 'lucide-react';
-import { DEFAULT_GUIDE_PROMPT, type Session } from '../../shared/types';
+import { DEFAULT_GUIDE_PROMPT, type GuideQuality, type Session, type TaskModels } from '../../shared/types';
 import { relativeTime, titleFromMarkdown, wordCount } from '../lib/format';
 import { tableOfContents } from '../lib/toc';
 import type { StreamState, Toast } from '../state';
@@ -11,7 +11,9 @@ interface Props {
   session: Session;
   stream: StreamState;
   busy: boolean;
-  onGenerate: (prompt: string) => void;
+  models: TaskModels | null;
+  escalationModel?: string;
+  onGenerate: (prompt: string, quality: GuideQuality) => void;
   onStop: () => void;
   onToast: (toast: Toast) => void;
 }
@@ -24,6 +26,9 @@ function basePrompt(prompt: string | undefined): string {
 
 function PromptForm({
   initial,
+  initialQuality,
+  guideModel,
+  escalationModel,
   hasMaterials,
   busy,
   regenerate,
@@ -31,19 +36,23 @@ function PromptForm({
   onCancel,
 }: {
   initial: string;
+  initialQuality: GuideQuality;
+  guideModel?: string;
+  escalationModel?: string;
   hasMaterials: boolean;
   busy: boolean;
   regenerate: boolean;
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string, quality: GuideQuality) => void;
   onCancel?: () => void;
 }) {
   const [prompt, setPrompt] = useState(initial);
+  const [quality, setQuality] = useState<GuideQuality>(initialQuality);
   return (
     <form
       className="prompt-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (prompt.trim()) onSubmit(prompt.trim());
+        if (prompt.trim()) onSubmit(prompt.trim(), escalationModel ? quality : 'standard');
       }}
     >
       <label htmlFor="guide-prompt">Tell the study agent what you need</label>
@@ -52,6 +61,15 @@ function PromptForm({
         <p className="notice notice--warn">
           No materials uploaded yet. Add your lecture slides or notes in the sidebar first, otherwise the guide will be based on general knowledge only.
         </p>
+      )}
+      {escalationModel && (
+        <label className="prompt-form__quality">
+          Quality
+          <select value={quality} onChange={(e) => setQuality(e.target.value as GuideQuality)} data-testid="guide-quality">
+            <option value="standard">Standard · {guideModel ?? 'default model'}</option>
+            <option value="max">Maximum · {escalationModel} (slower, about twice the cost)</option>
+          </select>
+        </label>
       )}
       <div className="prompt-form__actions">
         <button type="submit" className="btn btn--primary btn--lg" disabled={busy || !prompt.trim()}>
@@ -67,7 +85,7 @@ function PromptForm({
   );
 }
 
-export function GuideView({ session, stream, busy, onGenerate, onStop, onToast }: Props) {
+export function GuideView({ session, stream, busy, models, escalationModel, onGenerate, onStop, onToast }: Props) {
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showToc, setShowToc] = useState(true);
   const streamingGuide = stream.guideDraft !== null;
@@ -118,7 +136,16 @@ export function GuideView({ session, stream, busy, onGenerate, onStop, onToast }
             Upload your lecture slides and notes, then describe the guide you want. The study agent reads every slide, explains each concept
             in depth with gold-standard tips, diagrams and tables, and streams the document here as it writes.
           </p>
-          <PromptForm initial={DEFAULT_GUIDE_PROMPT} hasMaterials={hasMaterials} busy={busy} regenerate={false} onSubmit={onGenerate} />
+          <PromptForm
+            initial={DEFAULT_GUIDE_PROMPT}
+            initialQuality="standard"
+            guideModel={models?.guide}
+            escalationModel={escalationModel}
+            hasMaterials={hasMaterials}
+            busy={busy}
+            regenerate={false}
+            onSubmit={onGenerate}
+          />
         </div>
       </div>
     );
@@ -131,6 +158,7 @@ export function GuideView({ session, stream, busy, onGenerate, onStop, onToast }
           <strong>{title}</strong>
           <span className="muted small">
             v{session.guide.version} · {wordCount(markdown).toLocaleString()} words · updated {relativeTime(session.guide.updatedAt)}
+            {session.guide.model ? ` · ${session.guide.model}` : ''}
           </span>
         </div>
         <div className="guide__actions">
@@ -147,12 +175,15 @@ export function GuideView({ session, stream, busy, onGenerate, onStop, onToast }
         <div className="guide__regenerate">
           <PromptForm
             initial={basePrompt(session.guide.prompt)}
+            initialQuality={session.guide.model && session.guide.model === escalationModel ? 'max' : 'standard'}
+            guideModel={models?.guide}
+            escalationModel={escalationModel}
             hasMaterials={hasMaterials}
             busy={busy}
             regenerate
-            onSubmit={(prompt) => {
+            onSubmit={(prompt, quality) => {
               setShowRegenerate(false);
-              onGenerate(prompt);
+              onGenerate(prompt, quality);
             }}
             onCancel={() => setShowRegenerate(false)}
           />

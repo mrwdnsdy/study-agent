@@ -8,7 +8,7 @@ An AI study companion powered by **Claude Opus**. Upload your lecture slides, no
 - **Produce a post-quiz review session**: a scorecard by topic, a question-by-question breakdown of what went wrong and why, the misconceptions behind the mistakes, a targeted revision plan, and retry prompts. From there you can quiz yourself on your weak areas or discuss the mistakes in chat.
 - **Export** the guide (and reviews) as a **Word document** (diagrams included) that opens in Google Docs, as a printable page (save as PDF) or as a self-contained HTML file. With a Google OAuth client ID configured it uploads straight to your Drive as a Google Doc.
 
-Everything runs against `claude-opus-5` by default (change `ANTHROPIC_MODEL` to use another model).
+The study guide is written by **Claude Opus 5** (`claude-opus-5`); chat, quizzes, grading and reviews run on **Claude Sonnet 5**, and **Claude Fable 5.1** steps in for *Maximum quality* guides and whenever a model declines a request. See [Models and cost](#models-and-cost).
 
 There are two ways to run it:
 
@@ -75,7 +75,7 @@ An API key must never be put into the page itself: the repository and the page a
 2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
 3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
 
-`config.json` fields: `proxyUrl`, `accessCode`, `model`, `effort` (`low` … `max`) and `notice` (a sentence shown in Settings, e.g. who is paying for usage).
+`config.json` fields: `proxyUrl`, `accessCode`, `models` (per task: `guide`, `chat`, `quiz`, `grading`, `review`), `escalationModel`, `effort` (`low` … `max`) and `notice` (a sentence shown in Settings, e.g. who is paying for usage). Visitors can still type one model for every task in Settings.
 
 ### Or let each visitor bring their own key
 
@@ -96,7 +96,10 @@ All settings live in `.env` (see `.env.example`).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | – | Required. Your Anthropic API key (server-side only, never sent to the browser). |
-| `ANTHROPIC_MODEL` | `claude-opus-5` | Model for every task: guide, chat, quiz generation, grading, review. |
+| `ANTHROPIC_MODEL` | – | One model for every task. Leave unset to use the per-task defaults below. |
+| `ANTHROPIC_MODEL_GUIDE` | `claude-opus-5` | Model that writes the study guide. |
+| `ANTHROPIC_MODEL_CHAT` / `_QUIZ` / `_GRADING` / `_REVIEW` | `claude-sonnet-5` | Models for the tutor chat, quiz creation, short-answer grading and the post-quiz review. |
+| `ANTHROPIC_ESCALATION_MODEL` | `claude-fable-5-1` | Used for *Maximum quality* guides and retried automatically when a task's model declines or returns nothing. `off` disables it. |
 | `ANTHROPIC_EFFORT` | `high` | Reasoning effort (`low`, `medium`, `high`, `xhigh`, `max`). Higher is more thorough and slower. |
 | `ANTHROPIC_FILES_API` | `on` | Upload PDFs/images once via the Files API and reference them by id. Set `off` to inline them on every request. |
 | `PORT` | `3001` | API port. |
@@ -153,6 +156,18 @@ NODE_ENV=production ANTHROPIC_API_KEY=sk-ant-... npm start   # serves everything
 ```
 
 > There is no login. The app is meant for one person (or a trusted group) and must sit behind your own authentication, a VPN, or a platform-level access control if you expose it on the internet: anyone who can reach it can spend your API credits.
+
+## Models and cost
+
+Each kind of call has its own model, so the expensive model only runs where it shows:
+
+| Task | Default | Why |
+| --- | --- | --- |
+| Study guide (and rewrites from chat) | `claude-opus-5` | The long, slide-by-slide document is what students judge; Opus reads slides and keeps 30k-token documents coherent. |
+| Chat, quiz creation, grading, review | `claude-sonnet-5` | Short, well-scoped calls where Sonnet 5 is close to Opus at less than half the price. |
+| Escalation | `claude-fable-5-1` | Picked with *Quality: Maximum* on the guide form, and tried automatically when the task's model declines or returns nothing. About twice the price of Opus. |
+
+Rough cost of one full session on a 50-slide deck (guide, ten chat turns, a quiz and a review): about $1 with the defaults, about $2 with everything on Opus 5, about $3 with a Maximum-quality guide. Each model keeps its own prompt cache of the materials, so the first call on each model pays a cache write; follow-ups on that model read from cache at a tenth of the input price.
 
 ## Costs and limits
 

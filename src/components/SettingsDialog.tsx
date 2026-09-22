@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
-import { DEFAULT_MODEL, EFFORTS, MODEL_SUGGESTIONS, type Effort } from '../../shared/agent/constants';
+import { EFFORTS, MODEL_SUGGESTIONS, type Effort } from '../../shared/agent/constants';
 import {
+  EMPTY_SETTINGS,
   clearSettings,
   effectiveSettings,
   getSiteConfig,
@@ -80,6 +81,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
   if (!open) return null;
 
   const site = getSiteConfig();
+  const defaults = effectiveSettings({ ...EMPTY_SETTINGS }, site);
   const set = <K extends keyof BrowserSettings>(key: K, value: BrowserSettings[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const normalised = (): BrowserSettings => ({
@@ -150,13 +152,13 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
 
             <div className="field-row">
               <label className="field">
-                <span>Model</span>
+                <span>Model for every task (optional)</span>
                 <input
                   type="text"
                   list="settings-model-suggestions"
                   value={form.model}
                   onChange={(e) => set('model', e.target.value)}
-                  placeholder={site.model ?? DEFAULT_MODEL}
+                  placeholder="Per-task defaults"
                   spellCheck={false}
                 />
                 <datalist id="settings-model-suggestions">
@@ -164,6 +166,15 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                     <option key={m} value={m} />
                   ))}
                 </datalist>
+                <span className="field__hint">
+                  Defaults: study guide on <code>{defaults.models.guide}</code>; chat, quizzes and grading on <code>{defaults.models.chat}</code>
+                  {defaults.escalationModel ? (
+                    <>
+                      ; <code>{defaults.escalationModel}</code> for maximum-quality guides and whenever a model declines
+                    </>
+                  ) : null}
+                  .
+                </span>
               </label>
               <label className="field">
                 <span>Effort</span>

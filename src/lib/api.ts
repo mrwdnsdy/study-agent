@@ -1,6 +1,7 @@
 import type {
   AnswerRequest,
   AnswerResponse,
+  GuideQuality,
   Quiz,
   QuizConfig,
   ServerConfigResponse,
@@ -24,7 +25,7 @@ export interface Api {
   clearMessages(id: string): Promise<Session>;
   uploadMaterials(id: string, files: File[]): Promise<Session>;
   deleteMaterial(id: string, materialId: string): Promise<Session>;
-  generateGuide(id: string, prompt: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
+  generateGuide(id: string, prompt: string, onEvent: OnEvent, signal?: AbortSignal, quality?: GuideQuality): Promise<void>;
   chat(id: string, message: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   createQuiz(id: string, config: QuizConfig, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   answerQuestion(id: string, quizId: string, body: AnswerRequest): Promise<AnswerResponse>;
@@ -65,7 +66,7 @@ export const serverApi: Api = {
   deleteMaterial: (id: string, materialId: string) =>
     request<Session>(`/api/sessions/${id}/materials/${materialId}`, { method: 'DELETE' }),
 
-  generateGuide: (id, prompt, onEvent, signal) => streamSse(`/api/sessions/${id}/generate`, { prompt }, onEvent, signal),
+  generateGuide: (id, prompt, onEvent, signal, quality) => streamSse(`/api/sessions/${id}/generate`, { prompt, quality }, onEvent, signal),
   chat: (id, message, onEvent, signal) => streamSse(`/api/sessions/${id}/chat`, { message }, onEvent, signal),
 
   createQuiz: (id, config, onEvent, signal) => streamSse(`/api/sessions/${id}/quizzes`, config, onEvent, signal),

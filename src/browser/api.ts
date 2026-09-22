@@ -66,7 +66,7 @@ function context(): core.AgentContext {
     timeout: 30 * 60 * 1000,
     maxRetries: 2,
   });
-  return { client, model: settings.model, effort: settings.effort };
+  return { client, models: settings.models, effort: settings.effort, escalationModel: settings.escalationModel };
 }
 
 /** Runs a streaming operation, turning SDK errors into the same friendly messages the server sends. */
@@ -162,7 +162,14 @@ async function materialsInput(sessionId: string): Promise<core.MaterialsInput> {
 export const browserApi: Api = {
   async config(): Promise<ServerConfigResponse> {
     const settings = effectiveSettings();
-    return { model: settings.model, hasApiKey: hasCredentials(settings), sofficeAvailable: false, maxUploadMb: MAX_UPLOAD_MB };
+    return {
+      model: settings.models.guide,
+      models: settings.models,
+      escalationModel: settings.escalationModel,
+      hasApiKey: hasCredentials(settings),
+      sofficeAvailable: false,
+      maxUploadMb: MAX_UPLOAD_MB,
+    };
   },
 
   async listSessions(): Promise<SessionSummary[]> {
@@ -257,7 +264,7 @@ export const browserApi: Api = {
     return updateSession(id, (s) => void (s.materials = s.materials.filter((m) => m.id !== materialId)));
   },
 
-  generateGuide: (id, prompt, onEvent, signal) =>
+  generateGuide: (id, prompt, onEvent, signal, quality) =>
     streaming(signal, async () => {
       const text = prompt.trim();
       if (!text) throw new Error('Describe the study guide you want first.');
@@ -265,16 +272,17 @@ export const browserApi: Api = {
       const ctx = context();
       const materials = await materialsInput(id);
       const version = (session.guide?.version ?? 0) + 1;
+      const model = quality === 'max' ? ctx.escalationModel : undefined;
       onEvent({ type: 'status', text: materials.info.length ? 'Reading your materials…' : 'Starting…' });
       onEvent({ type: 'guide_start', version });
-      const result = await core.generateGuide(ctx, { materials, prompt: text, send: onEvent, signal });
-      const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt: text };
+      const result = await core.generateGuide(ctx, { materials, prompt: text, send: onEvent, signal, model });
+      const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt: text, model: result.model };
       const userMessage: ChatMessage = { id: newId(), role: 'user', content: text, createdAt: nowIso(), kind: 'guide' };
       const assistantMessage: ChatMessage = {
         id: newId(),
         role: 'assistant',
         kind: 'guide',
-        content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+        content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${result.model}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
         thinking: result.thinking || undefined,
         createdAt: nowIso(),
       };
@@ -326,9 +334,11 @@ export const browserApi: Api = {
           const current = await requireSession(id);
           const prompt = `${core.basePrompt(current.guide?.prompt, DEFAULT_GUIDE_PROMPT)}\n\nRevision instructions: ${instructions.trim()}`;
           const version = (current.guide?.version ?? 0) + 1;
+          // A guide written at maximum quality stays on the escalation model when rewritten.
+          const model = current.guide?.model && current.guide.model === ctx.escalationModel ? ctx.escalationModel : undefined;
           send({ type: 'guide_start', version });
-          const result = await core.generateGuide(ctx, { materials, prompt, send, signal });
-          const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt };
+          const result = await core.generateGuide(ctx, { materials, prompt, send, signal, model });
+          const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt, model: result.model };
           await updateSession(id, (s) => void (s.guide = guide));
           send({ type: 'guide', guide });
           return guide;

@@ -5,30 +5,32 @@ import { basePrompt, buildQuiz, describeError, generateGuide, runChat, type Chat
 import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { nowIso, startStream } from './helpers.js';
+import { config } from '../config.js';
 
 export const studyRouter = Router();
 
-const GenerateSchema = z.object({ prompt: z.string().trim().min(1).max(20_000) });
+const GenerateSchema = z.object({ prompt: z.string().trim().min(1).max(20_000), quality: z.enum(['standard', 'max']).optional() });
 const ChatSchema = z.object({ message: z.string().trim().min(1).max(50_000) });
 
 studyRouter.post('/:id/generate', async (req, res) => {
   const id = req.params.id;
-  const { prompt } = GenerateSchema.parse(req.body);
+  const { prompt, quality } = GenerateSchema.parse(req.body);
   const session = await requireSession(id);
   const materials = await getMaterials(id);
   const { sse, signal } = startStream(req, res);
   try {
     const version = (session.guide?.version ?? 0) + 1;
+    const model = quality === 'max' ? config.escalationModel : undefined;
     sse.send({ type: 'status', text: materials.length ? 'Reading your materials…' : 'Starting…' });
     sse.send({ type: 'guide_start', version });
-    const result = await generateGuide({ materials, prompt, send: (e) => sse.send(e), signal });
-    const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt };
+    const result = await generateGuide({ materials, prompt, send: (e) => sse.send(e), signal, model });
+    const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt, model: result.model };
     const userMessage: ChatMessage = { id: newId(), role: 'user', content: prompt, createdAt: nowIso(), kind: 'guide' };
     const assistantMessage: ChatMessage = {
       id: newId(),
       role: 'assistant',
       kind: 'guide',
-      content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+      content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${result.model}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
       thinking: result.thinking || undefined,
       createdAt: nowIso(),
     };
@@ -85,9 +87,11 @@ studyRouter.post('/:id/chat', async (req, res) => {
       const current = await requireSession(id);
       const prompt = `${basePrompt(current.guide?.prompt, DEFAULT_GUIDE_PROMPT)}\n\nRevision instructions: ${instructions.trim()}`;
       const version = (current.guide?.version ?? 0) + 1;
+      // A guide written at maximum quality stays on the escalation model when rewritten.
+      const model = current.guide?.model && current.guide.model === config.escalationModel ? config.escalationModel : undefined;
       send({ type: 'guide_start', version });
-      const result = await generateGuide({ materials, prompt, send, signal });
-      const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt };
+      const result = await generateGuide({ materials, prompt, send, signal, model });
+      const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt, model: result.model };
       await updateSession(id, (s) => void (s.guide = guide));
       send({ type: 'guide', guide });
       return guide;

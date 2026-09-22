@@ -61,16 +61,16 @@ export default {
       return new Response(null, { status: 204, headers: withCors(new Headers(), request, origin) });
     }
     if (!origin) return error(403, 'permission_error', 'This origin is not allowed to use the proxy.', request, null);
+
+    const url = new URL(request.url);
+    if (request.method !== 'POST' || !ALLOWED_PATHS.includes(url.pathname)) {
+      return error(404, 'not_found_error', 'Only the Messages API is available through this proxy.', request, origin);
+    }
     if (!env.ANTHROPIC_API_KEY) {
       return error(500, 'api_error', 'The proxy has no ANTHROPIC_API_KEY secret yet. The site owner needs to add it in the Cloudflare dashboard.', request, origin);
     }
     if (env.ACCESS_CODE && request.headers.get('x-access-code') !== env.ACCESS_CODE) {
       return error(403, 'permission_error', 'Wrong or missing access code. Enter it in Settings.', request, origin);
-    }
-
-    const url = new URL(request.url);
-    if (request.method !== 'POST' || !ALLOWED_PATHS.includes(url.pathname)) {
-      return error(404, 'not_found_error', 'Only the Messages API is available through this proxy.', request, origin);
     }
 
     if (env.RATE_LIMITER) {

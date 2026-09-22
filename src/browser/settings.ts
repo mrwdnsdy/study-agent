@@ -1,4 +1,5 @@
-import { DEFAULT_MODEL, isEffort, type Effort } from '../../shared/agent/constants';
+import { AGENT_TASKS, DEFAULT_ESCALATION_MODEL, isEffort, resolveTaskModels, type Effort } from '../../shared/agent/constants';
+import type { TaskModels } from '../../shared/types';
 
 /**
  * What the visitor typed in Settings. Every field is optional: an empty or
@@ -22,7 +23,12 @@ export interface BrowserSettings {
 export interface SiteConfig {
   proxyUrl?: string;
   accessCode?: string;
+  /** One model for every task (rarely wanted; prefer `models`). */
   model?: string;
+  /** Model per task; missing tasks use the built-in defaults. */
+  models?: Partial<TaskModels>;
+  /** Model for maximum-quality guides and for retries when a model declines; "off" disables it. */
+  escalationModel?: string;
   effort?: Effort;
   notice?: string;
 }
@@ -32,7 +38,8 @@ export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'none';
 /** Fully resolved values used to call Claude. */
 export interface EffectiveSettings {
   apiKey: string;
-  model: string;
+  models: TaskModels;
+  escalationModel?: string;
   effort: Effort;
   baseUrl: string;
   accessCode: string;
@@ -55,10 +62,18 @@ export async function loadSiteConfig(): Promise<SiteConfig> {
     const response = await fetch(`${import.meta.env.BASE_URL}config.json`, { cache: 'no-store', headers: { Accept: 'application/json' } });
     if (!response.ok) return (siteConfig = {});
     const raw = (await response.json()) as Record<string, unknown>;
+    const rawModels = raw.models && typeof raw.models === 'object' ? (raw.models as Record<string, unknown>) : {};
+    const models: Partial<TaskModels> = {};
+    for (const task of AGENT_TASKS) {
+      const value = cleanString(rawModels[task]);
+      if (value) models[task] = value;
+    }
     siteConfig = {
       proxyUrl: cleanString(raw.proxyUrl).replace(/\/+$/, '') || undefined,
       accessCode: cleanString(raw.accessCode) || undefined,
       model: cleanString(raw.model) || undefined,
+      models: Object.keys(models).length ? models : undefined,
+      escalationModel: cleanString(raw.escalationModel) || undefined,
       effort: isEffort(raw.effort) ? raw.effort : undefined,
       notice: cleanString(raw.notice) || undefined,
     };
@@ -108,20 +123,25 @@ export function clearSettings(): void {
 /**
  * Resolves what to use for the next Claude call. The visitor's own proxy wins,
  * then the visitor's own key (called directly), then the site's preset proxy.
+ * A model the visitor typed applies to every task; otherwise the site's
+ * per-task map (over the built-in defaults) is used.
  */
 export function effectiveSettings(saved: BrowserSettings = loadSettings(), site: SiteConfig = siteConfig): EffectiveSettings {
-  const model = saved.model || site.model || DEFAULT_MODEL;
+  const models = saved.model ? resolveTaskModels({}, saved.model) : resolveTaskModels(site.models ?? {}, site.model);
+  const escalationModel =
+    site.escalationModel === undefined ? DEFAULT_ESCALATION_MODEL : site.escalationModel.toLowerCase() === 'off' ? undefined : site.escalationModel;
   const effort: Effort = saved.effort || site.effort || 'high';
+  const base = { models, escalationModel, effort };
   if (saved.baseUrl) {
-    return { apiKey: saved.apiKey, model, effort, baseUrl: saved.baseUrl, accessCode: saved.accessCode, source: 'own-proxy' };
+    return { ...base, apiKey: saved.apiKey, baseUrl: saved.baseUrl, accessCode: saved.accessCode, source: 'own-proxy' };
   }
   if (saved.apiKey) {
-    return { apiKey: saved.apiKey, model, effort, baseUrl: '', accessCode: '', source: 'own-key' };
+    return { ...base, apiKey: saved.apiKey, baseUrl: '', accessCode: '', source: 'own-key' };
   }
   if (site.proxyUrl) {
-    return { apiKey: '', model, effort, baseUrl: site.proxyUrl, accessCode: site.accessCode ?? '', source: 'site-proxy' };
+    return { ...base, apiKey: '', baseUrl: site.proxyUrl, accessCode: site.accessCode ?? '', source: 'site-proxy' };
   }
-  return { apiKey: '', model, effort, baseUrl: '', accessCode: '', source: 'none' };
+  return { ...base, apiKey: '', baseUrl: '', accessCode: '', source: 'none' };
 }
 
 /** True when Claude can be called: a key, or a proxy that holds one. */
