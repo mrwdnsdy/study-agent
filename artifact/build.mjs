@@ -27,10 +27,10 @@ const vite = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js');
 const build = spawnSync(process.execPath, [vite, 'build', '--outDir', outDir, '--emptyOutDir'], { cwd: root, env, stdio: 'inherit' });
 if (build.status !== 0) process.exit(build.status ?? 1);
 
-// The publisher refuses text files with raw control bytes (pdf.js and docx tables carry a few inside string
-// literals), so rewrite them as JavaScript escapes. Outside string, template and regex literals such bytes cannot
-// occur in valid JavaScript, and VT/FF (whitespace) are left alone.
-const CONTROL_BYTES = /[\x00-\x08\x0e-\x1f]/g;
+// The publisher refuses text files with raw control bytes or the U+FFFD replacement character (pdf.js, pdf-lib
+// and the docx tables carry a few inside string literals), so rewrite them as JavaScript escapes. Outside string,
+// template and regex literals such characters cannot occur in valid JavaScript; VT/FF (whitespace) are left alone.
+const CONTROL_BYTES = /[\x00-\x08\x0e-\x1f\uFFFD]/g;
 let escaped = 0;
 const escapeControls = (dir) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -43,7 +43,10 @@ const escapeControls = (dir) => {
     const source = fs.readFileSync(full, 'utf8');
     if (!CONTROL_BYTES.test(source)) continue;
     CONTROL_BYTES.lastIndex = 0;
-    const clean = source.replace(CONTROL_BYTES, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const clean = source.replace(CONTROL_BYTES, (ch) => {
+      const code = ch.charCodeAt(0);
+      return code > 0xff ? `\\u${code.toString(16).padStart(4, '0')}` : `\\x${code.toString(16).padStart(2, '0')}`;
+    });
     const check = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: clean, encoding: 'utf8' });
     if (check.status !== 0) {
       console.error(`Escaping control bytes broke ${entry.name}:\n${check.stderr}`);
