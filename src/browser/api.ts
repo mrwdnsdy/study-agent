@@ -27,7 +27,7 @@ import { DEFAULT_SESSION_TITLE, blankSession, summarizeSession, titleFromFilenam
 import type { Api } from '../lib/api';
 import { localDb, partFileIds } from './db';
 import { detectKind, extractFile } from './extract';
-import { hasCredentials, loadSettings } from './settings';
+import { effectiveSettings, hasCredentials } from './settings';
 
 /** Inline PDFs count against Claude's 32 MB request limit once base64-encoded. */
 const MAX_PDF_MB = 20;
@@ -53,11 +53,9 @@ export const MISSING_CREDENTIALS_MESSAGE =
   'Add your Anthropic API key (or a proxy URL) in Settings before using Claude features.';
 
 function context(): core.AgentContext {
-  const settings = loadSettings();
+  const settings = effectiveSettings();
   if (!hasCredentials(settings)) throw new Error(MISSING_CREDENTIALS_MESSAGE);
-  const apiKey = settings.apiKey.trim();
-  const baseURL = settings.baseUrl.trim().replace(/\/+$/, '');
-  const accessCode = settings.accessCode.trim();
+  const { apiKey, baseUrl: baseURL, accessCode } = settings;
   const client = new Anthropic({
     // A proxy replaces the key server-side; the SDK still needs a non-empty value.
     apiKey: apiKey || 'proxy',
@@ -163,7 +161,7 @@ async function materialsInput(sessionId: string): Promise<core.MaterialsInput> {
 
 export const browserApi: Api = {
   async config(): Promise<ServerConfigResponse> {
-    const settings = loadSettings();
+    const settings = effectiveSettings();
     return { model: settings.model, hasApiKey: hasCredentials(settings), sofficeAvailable: false, maxUploadMb: MAX_UPLOAD_MB };
   },
 

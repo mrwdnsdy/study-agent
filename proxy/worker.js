@@ -1,21 +1,25 @@
 /**
  * Cloudflare Worker that lets the GitHub Pages build of Study Agent call Claude
- * without every visitor needing an API key: the key lives in a Worker secret and
- * is added to each request here. An optional access code keeps strangers out.
+ * without visitors needing an API key: the key lives in a Worker secret and is
+ * added to each request here, then the request is forwarded to api.anthropic.com.
+ *
+ * Protections (all optional, see wrangler.toml):
+ *   ALLOWED_ORIGINS  only pages on these origins may call the proxy from a browser
+ *   ACCESS_CODE      a shared passphrase visitors enter in Settings
+ *   RATE_LIMITER     per-visitor request cap (Cloudflare rate limiting binding)
+ * Only the Messages endpoints are forwarded. Set a monthly spend limit for the
+ * key in the Anthropic Console as the real backstop.
  *
  * Deploy:
- *   npm i -g wrangler
+ *   npm i -g wrangler && wrangler login
  *   cd proxy
  *   wrangler secret put ANTHROPIC_API_KEY
- *   wrangler secret put ACCESS_CODE          # optional but recommended
- *   wrangler deploy
- * Then paste the Worker URL (and access code) into Settings on the web page.
- *
- * Variables (wrangler.toml [vars] or the dashboard):
- *   ALLOWED_ORIGINS  comma-separated page origins, e.g. "https://you.github.io"; "*" allows any.
+ *   wrangler secret put ACCESS_CODE        # optional
+ *   wrangler deploy                        # prints https://study-agent-proxy.<you>.workers.dev
  */
 
 const UPSTREAM = 'https://api.anthropic.com';
+const ALLOWED_PATHS = ['/v1/messages', '/v1/messages/count_tokens'];
 const STRIP_REQUEST_HEADERS = ['host', 'origin', 'referer', 'cookie', 'x-access-code', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 'cf-visitor'];
 
 function allowedOrigin(request, env) {
@@ -30,7 +34,7 @@ function allowedOrigin(request, env) {
 
 function withCors(headers, request, origin) {
   headers.set('Access-Control-Allow-Origin', origin);
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
   headers.set(
     'Access-Control-Allow-Headers',
     request.headers.get('Access-Control-Request-Headers') ?? 'content-type, x-api-key, x-access-code, anthropic-version, anthropic-beta',
@@ -41,9 +45,9 @@ function withCors(headers, request, origin) {
   return headers;
 }
 
-function error(status, message, request, origin) {
-  const body = JSON.stringify({ type: 'error', error: { type: status === 403 ? 'permission_error' : 'api_error', message } });
-  const headers = new Headers({ 'content-type': 'application/json' });
+function error(status, type, message, request, origin, extra = {}) {
+  const body = JSON.stringify({ type: 'error', error: { type, message } });
+  const headers = new Headers({ 'content-type': 'application/json', ...extra });
   if (origin) withCors(headers, request, origin);
   return new Response(body, { status, headers });
 }
@@ -56,23 +60,37 @@ export default {
       if (!origin) return new Response(null, { status: 403 });
       return new Response(null, { status: 204, headers: withCors(new Headers(), request, origin) });
     }
-    if (!origin) return error(403, 'This origin is not allowed to use the proxy.', request, null);
-    if (!env.ANTHROPIC_API_KEY) return error(500, 'The proxy has no ANTHROPIC_API_KEY secret.', request, origin);
+    if (!origin) return error(403, 'permission_error', 'This origin is not allowed to use the proxy.', request, null);
+    if (!env.ANTHROPIC_API_KEY) {
+      return error(500, 'api_error', 'The proxy has no ANTHROPIC_API_KEY secret yet. The site owner needs to add it in the Cloudflare dashboard.', request, origin);
+    }
     if (env.ACCESS_CODE && request.headers.get('x-access-code') !== env.ACCESS_CODE) {
-      return error(403, 'Wrong or missing access code. Enter it in Settings.', request, origin);
+      return error(403, 'permission_error', 'Wrong or missing access code. Enter it in Settings.', request, origin);
     }
 
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/v1/')) return error(404, 'Not found', request, origin);
+    if (request.method !== 'POST' || !ALLOWED_PATHS.includes(url.pathname)) {
+      return error(404, 'not_found_error', 'Only the Messages API is available through this proxy.', request, origin);
+    }
+
+    if (env.RATE_LIMITER) {
+      const key = request.headers.get('cf-connecting-ip') ?? 'unknown';
+      const { success } = await env.RATE_LIMITER.limit({ key });
+      if (!success) {
+        return error(429, 'rate_limit_error', 'Too many requests from your connection. Wait a minute and try again.', request, origin, {
+          'retry-after': '60',
+        });
+      }
+    }
 
     const headers = new Headers(request.headers);
     for (const name of STRIP_REQUEST_HEADERS) headers.delete(name);
     headers.set('x-api-key', env.ANTHROPIC_API_KEY);
 
     const upstream = await fetch(`${UPSTREAM}${url.pathname}${url.search}`, {
-      method: request.method,
+      method: 'POST',
       headers,
-      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+      body: request.body,
       redirect: 'manual',
     });
 

@@ -14,6 +14,7 @@ import {
 import type { MaterialMeta, ServerConfigResponse, Session, SessionSummary } from '../../shared/types';
 import { formatBytes, relativeTime } from '../lib/format';
 import { getMode } from '../lib/mode';
+import { effectiveSettings } from '../browser/settings';
 
 const ACCEPT = '.pdf,.pptx,.docx,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.markdown,.csv';
 
@@ -202,7 +203,9 @@ export function Sidebar({
         {config ? (
           getMode() === 'browser' ? (
             <>
-              Browser mode · model <code>{config.model}</code> · your files, guides and key stay on this device
+              Browser mode · model <code>{config.model}</code>
+              {effectiveSettings().source === 'site-proxy' ? ' · Claude access provided by this site' : ' · your own Claude key'} · your files
+              and guides stay on this device
             </>
           ) : (
             <>

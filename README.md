@@ -64,16 +64,28 @@ The repository publishes itself to GitHub Pages on every push to `main` (`.githu
 The page is a static build in **browser mode**:
 
 - Files are read in the browser (PDF passthrough, PowerPoint text + notes + pictures, Word via Mammoth, images downscaled when large).
-- Claude is called straight from the browser. Each visitor opens **Settings** (gear icon, top right) and pastes their own Anthropic API key. The key is kept in that browser's `localStorage` and is sent to nobody except Claude.
-- Sessions, guides, chats and quizzes live in the browser's IndexedDB, so they survive reloads on the same device but are not shared between devices.
-- Optional: deploy the small Cloudflare Worker in [`proxy/`](proxy/README.md) to hold **your** key server-side and protect it with an access code. Visitors then enter the Worker URL and the code in Settings instead of a key.
+- Claude is called straight from the browser. Sessions, guides, chats and quizzes live in the browser's IndexedDB, so they survive reloads on the same device but are not shared between devices.
+- Where the Claude access comes from is decided by `public/config.json` plus the visitor's own Settings (gear icon, top right); see the next two sections.
 
-To publish your own copy:
+### Let visitors start immediately (preset proxy)
+
+An API key must never be put into the page itself: the repository and the page are public, so anyone could copy the key from the JavaScript and Anthropic revokes keys it finds in public repositories. Instead the key lives in a tiny Cloudflare Worker ([`proxy/`](proxy/README.md)) that adds it to each request, and the page is preset to use that Worker:
+
+1. Deploy the Worker (`cd proxy && wrangler deploy`, or from the Cloudflare dashboard) and give it the secret `ANTHROPIC_API_KEY` (Workers & Pages → the Worker → Settings → Variables and Secrets → Add → type *Secret*).
+2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
+3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
+
+`config.json` fields: `proxyUrl`, `accessCode`, `model`, `effort` (`low` … `max`) and `notice` (a sentence shown in Settings, e.g. who is paying for usage).
+
+### Or let each visitor bring their own key
+
+Leave `proxyUrl` empty and the page asks each visitor for an Anthropic API key in Settings. The key is kept in that browser's `localStorage` and is sent nowhere except to Claude. Visitors of a preset page can also enter their own key to switch to their own account.
+
+### Publishing your own copy
 
 1. Fork or push this repository to GitHub. GitHub Pages needs a **public** repository on the free plan (Settings → General → Danger zone → *Change visibility*).
-2. In Settings → Pages set *Source* to **GitHub Actions** (the workflow also tries to enable this itself on first run).
-3. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab). The site appears at `https://<owner>.github.io/<repository>/` a minute later.
-4. Optional: add a repository variable `VITE_GOOGLE_CLIENT_ID` to enable *Open in Google Docs* (the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`).
+2. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab). The workflow enables Pages itself; if that step fails, set Settings → Pages → *Source* to **GitHub Actions** and run it again. The site appears at `https://<owner>.github.io/<repository>/`.
+3. Optional: add a repository variable `VITE_GOOGLE_CLIENT_ID` to enable *Open in Google Docs* (the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`).
 
 Browser mode limits: PDFs must be under 20 MB (they are sent inline), PowerPoint decks are not rendered as images (no LibreOffice), and the Files API is not used.
 

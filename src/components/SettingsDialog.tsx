@@ -1,12 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
 import { DEFAULT_MODEL, EFFORTS, MODEL_SUGGESTIONS, type Effort } from '../../shared/agent/constants';
-import { loadSettings, saveSettings, type BrowserSettings } from '../browser/settings';
+import {
+  clearSettings,
+  effectiveSettings,
+  getSiteConfig,
+  loadSettings,
+  saveSettings,
+  type BrowserSettings,
+  type EffectiveSettings,
+} from '../browser/settings';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSaved: (settings: BrowserSettings) => void;
+  onSaved: (settings: EffectiveSettings) => void;
 }
 
 const EFFORT_LABELS: Record<Effort, string> = {
@@ -17,7 +25,36 @@ const EFFORT_LABELS: Record<Effort, string> = {
   max: 'Max · slowest, most thorough',
 };
 
-/** Browser-mode settings: the visitor's own API key (kept in localStorage) or a proxy that holds one. */
+function Intro({ resolved }: { resolved: EffectiveSettings }) {
+  const site = getSiteConfig();
+  switch (resolved.source) {
+    case 'site-proxy':
+      return (
+        <p className="muted small">
+          This page comes with Claude access provided by the site owner, so you can start straight away. {site.notice}
+          {site.notice ? ' ' : ''}Enter your own key below only if you would rather use your own Anthropic account.
+        </p>
+      );
+    case 'own-key':
+      return (
+        <p className="muted small">
+          You are using your own Anthropic key. It is stored only in this browser and sent nowhere except to Claude.
+          {site.proxyUrl ? ' Clear it to go back to the access provided by this site.' : ''}
+        </p>
+      );
+    case 'own-proxy':
+      return <p className="muted small">You are using your own proxy. Requests go to it instead of to api.anthropic.com.</p>;
+    default:
+      return (
+        <p className="muted small">
+          This page runs entirely in your browser. Your key and your study sessions are stored only on this device and are sent nowhere
+          except to Claude.
+        </p>
+      );
+  }
+}
+
+/** Browser-mode settings: the visitor's own key or proxy, layered over the site's presets (public/config.json). */
 export function SettingsDialog({ open, onClose, onSaved }: Props) {
   const [form, setForm] = useState<BrowserSettings>(() => loadSettings());
   const [showKey, setShowKey] = useState(false);
@@ -42,23 +79,33 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
 
   if (!open) return null;
 
+  const site = getSiteConfig();
   const set = <K extends keyof BrowserSettings>(key: K, value: BrowserSettings[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  const normalised = (): BrowserSettings => ({
+    apiKey: form.apiKey.trim(),
+    model: form.model.trim(),
+    effort: form.effort,
+    baseUrl: form.baseUrl.trim().replace(/\/+$/, ''),
+    accessCode: form.accessCode.trim(),
+  });
+  const preview = effectiveSettings(normalised());
+  const anythingSaved = Object.values(loadSettings()).some(Boolean);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const next: BrowserSettings = {
-      apiKey: form.apiKey.trim(),
-      model: form.model.trim() || DEFAULT_MODEL,
-      effort: form.effort,
-      baseUrl: form.baseUrl.trim(),
-      accessCode: form.accessCode.trim(),
-    };
-    saveSettings(next);
-    onSaved(next);
+    const next = normalised();
+    if (Object.values(next).some(Boolean)) saveSettings(next);
+    else clearSettings();
+    onSaved(effectiveSettings(next));
     onClose();
   };
 
-  const usingProxy = Boolean(form.baseUrl.trim());
+  const reset = () => {
+    clearSettings();
+    onSaved(effectiveSettings(loadSettings()));
+    onClose();
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -74,19 +121,16 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
           </header>
 
           <div className="modal__body">
-            <p className="muted small">
-              This page runs entirely in your browser. Your key and your study sessions are stored only on this device and are sent
-              nowhere except to Claude.
-            </p>
+            <Intro resolved={preview} />
 
             <label className="field">
-              <span>Anthropic API key</span>
+              <span>{site.proxyUrl ? 'Your own Anthropic API key (optional)' : 'Anthropic API key'}</span>
               <span className="field__input-row">
                 <input
                   type={showKey ? 'text' : 'password'}
                   value={form.apiKey}
                   onChange={(e) => set('apiKey', e.target.value)}
-                  placeholder={usingProxy ? 'Not needed with a proxy' : 'sk-ant-…'}
+                  placeholder={site.proxyUrl ? 'Leave empty to use the access provided by this site' : 'sk-ant-…'}
                   autoComplete="off"
                   spellCheck={false}
                   data-testid="settings-api-key"
@@ -112,7 +156,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   list="settings-model-suggestions"
                   value={form.model}
                   onChange={(e) => set('model', e.target.value)}
-                  placeholder={DEFAULT_MODEL}
+                  placeholder={site.model ?? DEFAULT_MODEL}
                   spellCheck={false}
                 />
                 <datalist id="settings-model-suggestions">
@@ -123,7 +167,8 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </label>
               <label className="field">
                 <span>Effort</span>
-                <select value={form.effort} onChange={(e) => set('effort', e.target.value as Effort)}>
+                <select value={form.effort} onChange={(e) => set('effort', e.target.value as Effort | '')}>
+                  <option value="">Default · {EFFORT_LABELS[site.effort ?? 'high']}</option>
                   {EFFORTS.map((effort) => (
                     <option key={effort} value={effort}>
                       {EFFORT_LABELS[effort]}
@@ -134,7 +179,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
             </div>
 
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAdvanced((v) => !v)}>
-              {advanced ? 'Hide proxy settings' : 'Use a proxy instead of a key…'}
+              {advanced ? 'Hide proxy settings' : 'Use your own proxy…'}
             </button>
 
             {advanced && (
@@ -145,24 +190,30 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                     type="url"
                     value={form.baseUrl}
                     onChange={(e) => set('baseUrl', e.target.value)}
-                    placeholder="https://study-agent-proxy.<you>.workers.dev"
+                    placeholder={site.proxyUrl ? "Leave empty to use this site's proxy" : 'https://study-agent-proxy.<you>.workers.dev'}
                     spellCheck={false}
                   />
                   <span className="field__hint">
-                    A Cloudflare Worker from the <code>proxy/</code> folder of the repository holds the API key server-side, so people you share the
-                    page with never need a key of their own.
+                    A Cloudflare Worker from the <code>proxy/</code> folder of the repository holds an API key server-side. Requests go there
+                    instead of to api.anthropic.com.
                   </span>
                 </label>
                 <label className="field">
                   <span>Access code</span>
                   <input type="password" value={form.accessCode} onChange={(e) => set('accessCode', e.target.value)} autoComplete="off" />
-                  <span className="field__hint">Only needed if the proxy was configured with one.</span>
+                  <span className="field__hint">Only needed if that proxy was configured with one.</span>
                 </label>
               </div>
             )}
           </div>
 
           <footer className="modal__footer">
+            {anythingSaved && (
+              <button type="button" className="btn btn--ghost" onClick={reset} title="Forget everything entered here">
+                Reset
+              </button>
+            )}
+            <span className="spacer" />
             <button type="button" className="btn btn--ghost" onClick={onClose}>
               Cancel
             </button>
