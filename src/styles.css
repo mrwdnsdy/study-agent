@@ -175,6 +175,17 @@ pre {
   border-radius: 4px;
 }
 
+.banner__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .topbar {
   height: var(--topbar-h);
   display: flex;
@@ -497,6 +508,8 @@ label {
 }
 
 input[type='text'],
+input[type='password'],
+input[type='url'],
 select,
 textarea {
   width: 100%;
@@ -510,6 +523,8 @@ textarea {
 }
 
 input[type='text']:focus,
+input[type='password']:focus,
+input[type='url']:focus,
 select:focus,
 textarea:focus {
   outline: 2px solid var(--primary-soft);
@@ -1979,5 +1994,124 @@ fieldset legend {
 
   .hero {
     padding: 22px 18px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Settings dialog (browser mode)
+   --------------------------------------------------------------------------- */
+
+.topbar__settings {
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.topbar__settings.is-attention {
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.modal__header,
+.modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.modal__header {
+  border-bottom: 1px solid var(--border);
+}
+
+.modal__header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal__body {
+  padding: 16px 18px 6px;
+}
+
+.modal__body > p:first-child {
+  margin-top: 0;
+}
+
+.modal__footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.field-row .field {
+  margin: 0;
+}
+
+.field__input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field__input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field__hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-3, var(--text-2));
+}
+
+.field__hint code {
+  font-size: 11px;
+}
+
+.settings__advanced {
+  margin-top: 8px;
+  padding: 4px 12px;
+  border-left: 3px solid var(--border-strong);
+}
+
+@media (max-width: 600px) {
+  .modal .field-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 }

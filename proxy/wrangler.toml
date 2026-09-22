@@ -1,0 +1,12 @@
+name = "study-agent-proxy"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# Page origins allowed to use this proxy. Use "*" to allow any origin
+# (then the access code is the only thing keeping strangers out).
+[vars]
+ALLOWED_ORIGINS = "https://mrwdnsdy.github.io"
+
+# Secrets (never put these in this file):
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put ACCESS_CODE

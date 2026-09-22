@@ -8,6 +8,7 @@ import { detectKind, extractMaterial, findSoffice, SUPPORTED_EXTENSIONS } from '
 import { deleteFileQuietly, uploadPartToFilesApi } from '../lib/claude.js';
 import { filesDir, getMaterials, newId, requireSession, saveMaterials, updateSession } from '../lib/store.js';
 import { httpError, nowIso, titleFromFilename } from './helpers.js';
+import { DEFAULT_SESSION_TITLE } from '../../shared/session.js';
 
 export const materialsRouter = Router();
 
@@ -89,7 +90,7 @@ materialsRouter.post('/:id/materials', upload.array('files', 30), async (req, re
   await saveMaterials(id, materials);
   const session = await updateSession(id, (s) => {
     s.materials.push(...metas);
-    if (s.title === 'New study session') {
+    if (s.title === DEFAULT_SESSION_TITLE) {
       const first = metas.find((m) => m.status === 'ready');
       if (first) s.title = titleFromFilename(first.name);
     }

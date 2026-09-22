@@ -6,15 +6,15 @@ const num = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-export type Effort = (typeof EFFORTS)[number];
+import { DEFAULT_MODEL, isEffort, type Effort } from '../shared/agent/core.js';
 
-const effortFromEnv = (value: string | undefined): Effort =>
-  (EFFORTS as readonly string[]).includes(value ?? '') ? (value as Effort) : 'high';
+export type { Effort };
+
+const effortFromEnv = (value: string | undefined): Effort => (isEffort(value) ? value : 'high');
 
 export const config = {
   port: num(process.env.PORT, 3001),
-  model: process.env.ANTHROPIC_MODEL?.trim() || 'claude-opus-5',
+  model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
   /** Thinking/effort level used for the study guide, chat, quiz and review calls. */
   effort: effortFromEnv(process.env.ANTHROPIC_EFFORT?.trim()),
   dataDir: path.resolve(process.env.DATA_DIR?.trim() || './data'),

@@ -1,5 +1,11 @@
-import type { Difficulty, Quiz, QuizConfig, QuizQuestion, QuestionType } from '../../shared/types.js';
-import type { ExtractedMaterial } from './extract.js';
+import type { Difficulty, MaterialKind, Quiz, QuizConfig, QuizQuestion, QuestionType } from '../types.js';
+
+/** The little the prompts need to know about each uploaded file. */
+export interface MaterialInfo {
+  name: string;
+  kind: MaterialKind;
+  summary: string;
+}
 
 /**
  * One frozen system prompt is shared by every flow (guide, chat, quiz, review)
@@ -44,7 +50,7 @@ export const SYSTEM_PROMPT = `You are Study Agent: an expert tutor, subject-matt
 export const MATERIALS_ACK =
   'I have read all of the materials carefully, slide by slide, and I am ready. Tell me what you would like to do: a full study guide, questions about any slide, or a quiz.';
 
-export function materialsPreamble(materials: ExtractedMaterial[]): string {
+export function materialsPreamble(materials: MaterialInfo[]): string {
   if (materials.length === 0) {
     return 'I have not uploaded any study materials yet. Until I do, help me with general study advice and remind me that uploading my lecture slides or notes will make your help much more specific.';
   }

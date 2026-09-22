@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { MaterialMeta, ServerConfigResponse, Session, SessionSummary } from '../../shared/types';
 import { formatBytes, relativeTime } from '../lib/format';
+import { getMode } from '../lib/mode';
 
 const ACCEPT = '.pdf,.pptx,.docx,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.markdown,.csv';
 
@@ -199,12 +200,18 @@ export function Sidebar({
 
       <footer className="sidebar__footer muted small">
         {config ? (
-          <>
-            Model <code>{config.model}</code>
-            {config.sofficeAvailable ? ' · slide rendering on' : ' · slide text extraction (install LibreOffice to render slides)'}
-          </>
+          getMode() === 'browser' ? (
+            <>
+              Browser mode · model <code>{config.model}</code> · your files, guides and key stay on this device
+            </>
+          ) : (
+            <>
+              Model <code>{config.model}</code>
+              {config.sofficeAvailable ? ' · slide rendering on' : ' · slide text extraction (install LibreOffice to render slides)'}
+            </>
+          )
         ) : (
-          'Connecting to server…'
+          'Connecting…'
         )}
       </footer>
     </div>

@@ -13,7 +13,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist-server/server/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test": "node --import tsx --test \"server/**/*.test.ts\" \"src/**/*.test.ts\""
+    "test": "node --import tsx --test \"server/**/*.test.ts\" \"shared/**/*.test.ts\" \"src/**/*.test.ts\""
   },
   "engines": {
     "node": ">=20"

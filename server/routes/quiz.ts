@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { AnswerResponse, ChatMessage, Quiz, QuizAnswer } from '../../shared/types.js';
-import { buildQuiz, describeError, generateReview, gradeShortAnswer, requestQuiz } from '../lib/claude.js';
+import { buildQuiz, describeError, generateReview, gradeChoice, gradeShortAnswer, requestQuiz } from '../lib/claude.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { httpError, nowIso, startStream } from './helpers.js';
 
@@ -75,15 +75,7 @@ quizRouter.post('/:id/quizzes/:quizId/answers', async (req, res) => {
       const found = options.findIndex((o) => o.trim().toLowerCase() === body.answer.trim().toLowerCase());
       selectedOptionIndex = found >= 0 ? found : undefined;
     }
-    const correct = selectedOptionIndex !== undefined && selectedOptionIndex === question.correctOptionIndex;
-    const correctText = options[question.correctOptionIndex ?? -1] ?? question.modelAnswer;
-    graded = {
-      correct,
-      score: correct ? 100 : 0,
-      feedback: correct
-        ? `✅ **Correct!** ${question.explanation}`
-        : `❌ **Not quite.** The correct answer is **${correctText}**.\n\n${question.explanation}`,
-    };
+    graded = gradeChoice(question, selectedOptionIndex);
   }
 
   const answer: QuizAnswer = {

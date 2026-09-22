@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, ClipboardList, FolderOpen, GraduationCap, MessageSquare, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, ClipboardList, FolderOpen, GraduationCap, MessageSquare, Settings, X } from 'lucide-react';
 import { DEFAULT_GUIDE_PROMPT, type AnswerRequest, type ChatMessage, type QuizConfig, type StreamEvent } from '../shared/types';
 import { api } from './lib/api';
+import { getMode } from './lib/mode';
 import { ChatPanel } from './components/ChatPanel';
 import { GuideView } from './components/GuideView';
 import { QuizPanel } from './components/QuizPanel';
 import { ReviewPanel } from './components/ReviewPanel';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Sidebar } from './components/Sidebar';
 import { initialState, reducer, type StreamKind, type Tab, type Toast } from './state';
 
@@ -22,6 +24,9 @@ const TABS: { id: Tab; label: string; icon: typeof BookOpen; mobileOnly?: boolea
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [draft, setDraft] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Resolved before the first render (main.tsx awaits detectMode()).
+  const browserMode = getMode() === 'browser';
   const streamRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current = state.session?.id ?? null;
@@ -60,8 +65,10 @@ export default function App() {
     }
   }, [fail, refreshSessions]);
 
+  const loadConfig = useCallback(() => api.config().then((config) => dispatch({ type: 'config', config })).catch(() => undefined), []);
+
   useEffect(() => {
-    api.config().then((config) => dispatch({ type: 'config', config })).catch(() => undefined);
+    void loadConfig();
     (async () => {
       try {
         const sessions = await refreshSessions();
@@ -75,7 +82,7 @@ export default function App() {
         fail(err);
       }
     })();
-  }, [fail, openSession, refreshSessions]);
+  }, [fail, loadConfig, openSession, refreshSessions]);
 
   useEffect(() => {
     if (!state.toast || state.toast.link) return;
@@ -300,9 +307,18 @@ export default function App() {
       {config && !config.hasApiKey && (
         <div className="banner banner--warn">
           <AlertTriangle size={16} />
-          <span>
-            The server has no <code>ANTHROPIC_API_KEY</code>. Add it to <code>.env</code> and restart, otherwise Claude features will fail.
-          </span>
+          {browserMode ? (
+            <span>
+              Add your Anthropic API key to start. It stays in this browser and is only ever sent to Claude.{' '}
+              <button type="button" className="banner__link" onClick={() => setSettingsOpen(true)}>
+                Open settings
+              </button>
+            </span>
+          ) : (
+            <span>
+              The server has no <code>ANTHROPIC_API_KEY</code>. Add it to <code>.env</code> and restart, otherwise Claude features will fail.
+            </span>
+          )}
         </div>
       )}
       <header className="topbar">
@@ -337,6 +353,17 @@ export default function App() {
             </span>
           )}
         </div>
+        {browserMode && (
+          <button
+            type="button"
+            className={`icon-btn topbar__settings${config && !config.hasApiKey ? ' is-attention' : ''}`}
+            title="Settings (API key, model)"
+            aria-label="Settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings size={18} />
+          </button>
+        )}
       </header>
 
       <div className={`layout layout--${tab}`}>
@@ -420,6 +447,17 @@ export default function App() {
           )}
         </aside>
       </div>
+
+      {browserMode && (
+        <SettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => {
+            void loadConfig();
+            toast({ kind: 'success', message: 'Settings saved in this browser.' });
+          }}
+        />
+      )}
 
       {state.toast && (
         <div className={`toast toast--${state.toast.kind}`} role="status">

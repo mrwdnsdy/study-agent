@@ -10,6 +10,11 @@ An AI study companion powered by **Claude Opus**. Upload your lecture slides, no
 
 Everything runs against `claude-opus-5` by default (change `ANTHROPIC_MODEL` to use another model).
 
+There are two ways to run it:
+
+- **Web page (GitHub Pages)**: nothing to install. Open the published page, paste an Anthropic API key into *Settings* (or use a proxy that holds one), and everything, from reading your slides to storing your sessions, happens inside your browser. See [Share it as a web page](#share-it-as-a-web-page-github-pages).
+- **Server mode**: run the Node server yourself (locally or on a host with a persistent disk). The key stays on the server, slides can be rendered with LibreOffice, and sessions are stored on disk.
+
 ## Quick start
 
 Requirements: Node.js 20 or newer and an [Anthropic API key](https://console.anthropic.com/).
@@ -52,6 +57,26 @@ Open <http://localhost:5173>, drop your slides into the sidebar, and press **Gen
 - **Printable view**: opens the guide as a styled page in a new tab; use the browser's *Print → Save as PDF*.
 - **HTML**: a single self-contained file with the diagrams inlined.
 
+## Share it as a web page (GitHub Pages)
+
+The repository publishes itself to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`), so anyone with the link can use Study Agent without installing anything: **https://mrwdnsdy.github.io/study-agent/**
+
+The page is a static build in **browser mode**:
+
+- Files are read in the browser (PDF passthrough, PowerPoint text + notes + pictures, Word via Mammoth, images downscaled when large).
+- Claude is called straight from the browser. Each visitor opens **Settings** (gear icon, top right) and pastes their own Anthropic API key. The key is kept in that browser's `localStorage` and is sent to nobody except Claude.
+- Sessions, guides, chats and quizzes live in the browser's IndexedDB, so they survive reloads on the same device but are not shared between devices.
+- Optional: deploy the small Cloudflare Worker in [`proxy/`](proxy/README.md) to hold **your** key server-side and protect it with an access code. Visitors then enter the Worker URL and the code in Settings instead of a key.
+
+To publish your own copy:
+
+1. Fork or push this repository to GitHub. GitHub Pages needs a **public** repository on the free plan (Settings → General → Danger zone → *Change visibility*).
+2. In Settings → Pages set *Source* to **GitHub Actions** (the workflow also tries to enable this itself on first run).
+3. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab). The site appears at `https://<owner>.github.io/<repository>/` a minute later.
+4. Optional: add a repository variable `VITE_GOOGLE_CLIENT_ID` to enable *Open in Google Docs* (the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`).
+
+Browser mode limits: PDFs must be under 20 MB (they are sent inline), PowerPoint decks are not rendered as images (no LibreOffice), and the Files API is not used.
+
 ## Configuration
 
 All settings live in `.env` (see `.env.example`).
@@ -67,18 +92,28 @@ All settings live in `.env` (see `.env.example`).
 | `MAX_UPLOAD_MB` | `100` | Per-file upload limit. |
 | `SOFFICE_PATH` | auto-detect | Path to LibreOffice's `soffice`; `off` disables slide rendering. |
 | `VITE_GOOGLE_CLIENT_ID` | – | Enables *Open in Google Docs*. |
+| `VITE_BROWSER_MODE` | – | Build-time. `true` builds the static browser-mode bundle used for GitHub Pages (no server, key entered in Settings). |
+| `VITE_BASE` | `/` | Build-time. Public path of the client bundle, e.g. `/study-agent/` for a GitHub Pages project site. |
 
 ## How it works
 
 ```
+server mode:
 browser (React + Vite)  ──HTTP/SSE──▶  Express API  ──streaming──▶  Claude API (claude-opus-5)
       │                                    │
       │  markdown → DOCX/HTML export       │  ./data/sessions/<id>/{session.json, materials.json, files/}
+
+browser mode (GitHub Pages):
+browser (React + Vite + shared/agent core)  ──streaming──▶  Claude API (or the proxy/ Worker)
+      │
+      │  IndexedDB: sessions, extracted materials, files · localStorage: settings
 ```
 
-- **Materials** are parsed on upload (`server/lib/extract.ts`): PDFs are passed to Claude as documents (it reads text and images on every page); `.pptx` decks are rendered to PDF with LibreOffice when available, otherwise slide text, speaker notes and embedded images are extracted; `.docx` goes through Mammoth; images are downscaled when large.
+Everything that talks to Claude lives in `shared/agent/core.ts` and is used unchanged by the Express routes (`server/`) and by browser mode (`src/browser/`). The client picks the backend at start-up: the static build is forced into browser mode, a full deployment probes `/api/health`.
+
+- **Materials** are parsed on upload (`server/lib/extract.ts`, or `src/browser/extract.ts` in browser mode): PDFs are passed to Claude as documents (it reads text and images on every page); `.pptx` decks are rendered to PDF with LibreOffice when available, otherwise slide text, speaker notes and embedded images are extracted; `.docx` goes through Mammoth; images are downscaled when large.
 - **One cached prompt prefix** (system prompt → materials → current guide) is shared by every call, so the materials are billed at cache-read rates after the first request. Prompt caching uses a 1-hour TTL.
-- **The study guide** is the assistant's streamed response to your prompt. The chat agent has three tools: `update_study_guide` (replace/insert/append a section), `regenerate_study_guide` (full rewrite with new instructions, streamed) and `create_quiz` (strict JSON schema). Section edits are applied server-side (`server/lib/guideEdits.ts`).
+- **The study guide** is the assistant's streamed response to your prompt. The chat agent has three tools: `update_study_guide` (replace/insert/append a section), `regenerate_study_guide` (full rewrite with new instructions, streamed) and `create_quiz` (strict JSON schema). Section edits are applied by the app, not the model (`shared/agent/guideEdits.ts`).
 - **Quizzes** come from the `create_quiz` tool; multiple choice and true/false are graded instantly, short answers are graded by Claude with structured output (score 0–100 + feedback).
 - **Reviews** are streamed documents built from the full quiz record, and they are appended to the chat transcript so follow-up questions have context.
 - The server streams Server-Sent Events (`status`, `thinking`, `text`, `guide_delta`, `guide`, `tool`, `quiz`, `review`, `usage`, `done`, `error`); see `shared/types.ts` for the full contract.
@@ -120,6 +155,7 @@ npm run dev        # API (tsx watch) + Vite dev server
 npm run typecheck  # client + server
 npm test           # node:test suites (extraction, guide edits, DOCX export)
 npm run build      # dist/ (client) + dist-server/ (server)
+VITE_BROWSER_MODE=true VITE_BASE=/study-agent/ npx vite build --outDir dist-pages   # the GitHub Pages bundle
 ```
 
-Layout: `src/` React client, `server/` Express API, `shared/` types used by both.
+Layout: `src/` React client (`src/browser/` is browser mode), `server/` Express API, `shared/` types and the Claude agent core used by both, `proxy/` the optional Cloudflare Worker.

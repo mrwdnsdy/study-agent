@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_GUIDE_PROMPT, type ChatMessage, type StudyGuide } from '../../shared/types.js';
-import { buildQuiz, describeError, generateGuide, runChat, type ChatHooks } from '../lib/claude.js';
-import { applyGuideEdit, wordCount } from '../lib/guideEdits.js';
+import { basePrompt, buildQuiz, describeError, generateGuide, runChat, type ChatHooks } from '../lib/claude.js';
+import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { nowIso, startStream } from './helpers.js';
 
@@ -10,12 +10,6 @@ export const studyRouter = Router();
 
 const GenerateSchema = z.object({ prompt: z.string().trim().min(1).max(20_000) });
 const ChatSchema = z.object({ message: z.string().trim().min(1).max(50_000) });
-
-function basePrompt(prompt: string | undefined): string {
-  const raw = prompt ?? DEFAULT_GUIDE_PROMPT;
-  const index = raw.indexOf('\n\nRevision instructions:');
-  return index === -1 ? raw : raw.slice(0, index);
-}
 
 studyRouter.post('/:id/generate', async (req, res) => {
   const id = req.params.id;
@@ -89,7 +83,7 @@ studyRouter.post('/:id/chat', async (req, res) => {
     },
     regenerateGuide: async (instructions) => {
       const current = await requireSession(id);
-      const prompt = `${basePrompt(current.guide?.prompt)}\n\nRevision instructions: ${instructions.trim()}`;
+      const prompt = `${basePrompt(current.guide?.prompt, DEFAULT_GUIDE_PROMPT)}\n\nRevision instructions: ${instructions.trim()}`;
       const version = (current.guide?.version ?? 0) + 1;
       send({ type: 'guide_start', version });
       const result = await generateGuide({ materials, prompt, send, signal });

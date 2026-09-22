@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Session, SessionSummary } from '../../shared/types.js';
+import { blankSession, summarizeSession } from '../../shared/session.js';
 import type { ExtractedMaterial } from './extract.js';
 import { config } from '../config.js';
 
@@ -54,31 +55,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
     if (!entry.isDirectory() || !ID_RE.test(entry.name)) continue;
     const session = await readJson<Session | null>(sessionFile(entry.name), null);
     if (!session) continue;
-    summaries.push({
-      id: session.id,
-      title: session.title,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      materialCount: session.materials.length,
-      hasGuide: Boolean(session.guide),
-      quizCount: session.quizzes.length,
-    });
+    summaries.push(summarizeSession(session));
   }
   return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export async function createSession(title?: string): Promise<Session> {
-  const now = new Date().toISOString();
-  const session: Session = {
-    id: newId(),
-    title: title?.trim() || 'New study session',
-    createdAt: now,
-    updatedAt: now,
-    materials: [],
-    guide: null,
-    messages: [],
-    quizzes: [],
-  };
+  const session = blankSession(newId(), title);
   await fs.mkdir(filesDir(session.id), { recursive: true });
   await writeJson(sessionFile(session.id), session);
   await writeJson(materialsFile(session.id), []);
