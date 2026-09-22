@@ -30,7 +30,7 @@ export interface OpenAICompatOptions {
   capabilities: OpenAICompatCapabilities;
 }
 
-export const CAPABILITIES: Record<Exclude<ProviderId, 'anthropic' | 'gemini'>, OpenAICompatCapabilities> = {
+export const CAPABILITIES: Record<Exclude<ProviderId, 'anthropic' | 'gemini' | 'artifact'>, OpenAICompatCapabilities> = {
   openrouter: { jsonSchema: true, pdf: 'openrouter-file', reasoning: 'openrouter' },
   zai: { jsonSchema: false, pdf: 'text', reasoning: 'zai' },
   'workers-ai': { jsonSchema: false, pdf: 'text', reasoning: 'none' },

@@ -16,6 +16,7 @@ import { formatBytes, relativeTime } from '../lib/format';
 import { getMode } from '../lib/mode';
 import { effectiveSettings } from '../browser/settings';
 import { displayModel } from '../../shared/agent/constants';
+import { confirmAction } from '../lib/confirm';
 
 const ACCEPT = '.pdf,.pptx,.docx,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.markdown,.csv';
 
@@ -80,7 +81,9 @@ export function Sidebar({
   };
 
   const remove = (s: SessionSummary) => {
-    if (window.confirm(`Delete "${s.title}" and all of its materials, guide, chat and quizzes?`)) onDeleteSession(s.id);
+    void confirmAction(`Delete "${s.title}" and all of its materials, guide, chat and quizzes?`).then((ok) => {
+      if (ok) onDeleteSession(s.id);
+    });
   };
 
   return (

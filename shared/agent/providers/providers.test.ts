@@ -256,3 +256,27 @@ describe('extractJsonObject', () => {
     assert.equal(extractJsonObject('nothing'), null);
   });
 });
+
+describe('ChainLlmClient in-call tools', () => {
+  it('forwards executeTool to the adapter and does not fall back once a tool has run', async () => {
+    const executed: string[] = [];
+    let calls = 0;
+    const client: LlmClient = {
+      async stream(_request, handlers) {
+        calls += 1;
+        await handlers.executeTool?.({ type: 'tool_use', id: 't1', name: 'create_quiz', input: { title: 'Q' } } as Anthropic.ToolUseBlock);
+        throw new LlmError('boom', { provider: 'artifact', model: 'default' });
+      },
+    };
+    const chain = new ChainLlmClient(() => client);
+    await assert.rejects(
+      chain.stream(
+        { ...request(), model: ['artifact/default', 'artifact/quick'] },
+        { executeTool: async (block) => { executed.push(block.name); return { type: 'tool_result', tool_use_id: block.id, content: 'ok' }; } },
+      ),
+      /boom/,
+    );
+    assert.deepEqual(executed, ['create_quiz']);
+    assert.equal(calls, 1, 'the second model is not tried after a tool ran');
+  });
+});

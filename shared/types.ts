@@ -14,8 +14,11 @@ export type AgentTask = 'guide' | 'chat' | 'quiz' | 'grading' | 'review';
  * answers wins; the next is tried when one fails before producing output.
  */
 export type TaskModels = Record<AgentTask, string[]>;
-/** Model providers the agent can talk to. */
-export type ProviderId = 'anthropic' | 'gemini' | 'openrouter' | 'zai' | 'workers-ai';
+/**
+ * Model providers the agent can talk to. "artifact" is Claude reached through the
+ * claude.ai artifact runtime (the viewer's own account) when the app runs as an artifact.
+ */
+export type ProviderId = 'anthropic' | 'gemini' | 'openrouter' | 'zai' | 'workers-ai' | 'artifact';
 /** A selectable set of models, e.g. "free" (Gemini first) or "claude" (premium). */
 export interface LaneInfo {
   id: string;

@@ -46,3 +46,12 @@ describe('parseModelRef', () => {
     assert.deepEqual(providersOf(models, ['cf/@cf/google/gemma-4-26b-a4b-it']).sort(), ['anthropic', 'gemini', 'workers-ai', 'zai']);
   });
 });
+
+describe('artifact model references', () => {
+  it('routes "artifact/<tier>" to the artifact runtime and shows the tier', () => {
+    assert.deepEqual(parseModelRef('artifact/complex'), { provider: 'artifact', model: 'complex', ref: 'artifact/complex' });
+    assert.deepEqual(parseModelRef('artifact/'), { provider: 'artifact', model: 'default', ref: 'artifact/' });
+    assert.equal(displayModel('artifact/quick'), 'Claude (quick tier)');
+    assert.deepEqual(providersOf({ guide: ['artifact/complex'], chat: ['artifact/default'], quiz: ['artifact/default'], grading: ['artifact/quick'], review: ['artifact/default'] }), ['artifact']);
+  });
+});

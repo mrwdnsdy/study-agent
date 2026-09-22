@@ -3,6 +3,7 @@ import { Bot, Loader2, Send, Square, Trash2, User, Wrench } from 'lucide-react';
 import type { ChatMessage, Session } from '../../shared/types';
 import type { StreamState } from '../state';
 import { Markdown } from './Markdown';
+import { confirmAction } from '../lib/confirm';
 
 interface QuickAction {
   label: string;
@@ -130,7 +131,9 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
           title="Clear chat"
           disabled={busy || session.messages.length === 0}
           onClick={() => {
-            if (window.confirm('Clear the chat transcript? The study guide, materials and quizzes are kept.')) onClear();
+            void confirmAction('Clear the chat transcript? The study guide, materials and quizzes are kept.').then((ok) => {
+              if (ok) onClear();
+            });
           }}
         >
           <Trash2 size={15} />

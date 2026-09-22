@@ -14,6 +14,7 @@ import {
 import { percent, relativeTime } from '../lib/format';
 import { topicScores, type StreamState, type Toast } from '../state';
 import { Markdown } from './Markdown';
+import { confirmAction } from '../lib/confirm';
 
 const ALL_TYPES: QuestionType[] = ['multiple_choice', 'true_false', 'short_answer'];
 const LETTERS = 'ABCDEF';
@@ -416,7 +417,7 @@ function QuizSession({
             className="btn btn--ghost btn--sm"
             disabled={submitting || busy}
             onClick={async () => {
-              if (window.confirm('End the quiz now? Unanswered questions will count as skipped.')) {
+              if (await confirmAction('End the quiz now? Unanswered questions will count as skipped.')) {
                 await onComplete(quiz.id);
                 setShowResults(true);
               }
@@ -510,7 +511,9 @@ export function QuizPanel({
         busy={busy}
         onOpen={(id) => onSelectQuiz(id)}
         onDelete={(id) => {
-          if (window.confirm('Delete this quiz and its results?')) onDelete(id);
+          void confirmAction('Delete this quiz and its results?').then((ok) => {
+            if (ok) onDelete(id);
+          });
         }}
       />
     </div>

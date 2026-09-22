@@ -32,6 +32,12 @@ export interface LlmHandlers {
   onToolStart?: (name: string) => void;
   /** The chain moved on to another model because the previous one failed before producing output. */
   onModelSwitch?: (info: { from: string; to: string; reason: string }) => void;
+  /**
+   * Runs a tool the model called while the model is still working. Providers that execute page
+   * functions inside one call (the artifact runtime) use it and return only the final text;
+   * the other adapters ignore it and return tool_use blocks for the caller to execute.
+   */
+  executeTool?: (block: Anthropic.ToolUseBlock) => Promise<Anthropic.ToolResultBlockParam>;
 }
 
 export type StopReason = Anthropic.Messages.StopReason;

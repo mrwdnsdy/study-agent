@@ -91,3 +91,34 @@ describe('effectiveSettings', () => {
     assert.equal(s.effort, 'high');
   });
 });
+
+describe('artifact runtime', () => {
+  const artifactSite: SiteConfig = {
+    defaultLane: 'account',
+    lanes: {
+      account: {
+        label: 'Claude on your account',
+        models: { guide: 'artifact/complex', chat: 'artifact/default', quiz: 'artifact/default', grading: 'artifact/quick', review: 'artifact/default' },
+        escalationModel: 'artifact/complex',
+      },
+    },
+    artifact: true,
+  };
+
+  it('needs no credentials inside the claude.ai artifact viewer', () => {
+    const s = effectiveSettings({ ...EMPTY_SETTINGS }, artifactSite);
+    assert.equal(s.source, 'artifact');
+    assert.equal(s.baseUrl, '');
+    assert.deepEqual(s.models.guide, ['artifact/complex']);
+    assert.deepEqual(s.models.grading, ['artifact/quick']);
+    assert.equal(s.escalationModel, 'artifact/complex');
+    assert.equal(s.lane, 'account');
+    assert.equal(s.lanes[0].primary, 'Claude (complex tier)');
+  });
+
+  it('has no credentials when the same config is opened outside the viewer or a non-artifact model is typed', () => {
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS }, { ...artifactSite, artifact: false }).source, 'none');
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS, model: 'claude-opus-5' }, artifactSite).source, 'none');
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS, model: 'artifact/quick' }, artifactSite).source, 'artifact');
+  });
+});

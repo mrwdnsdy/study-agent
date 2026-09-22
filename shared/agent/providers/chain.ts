@@ -46,6 +46,13 @@ export class ChainLlmClient implements LlmClient {
           handlers.onToolStart?.(name);
         },
         onModelSwitch: handlers.onModelSwitch,
+        // A tool that ran inside the call has had its effect: no other model may retry the turn.
+        executeTool: handlers.executeTool
+          ? async (block) => {
+              produced = true;
+              return handlers.executeTool!(block);
+            }
+          : undefined,
       };
       try {
         const message = await client.stream({ ...request, model: ref.model }, wrapped, signal);

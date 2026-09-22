@@ -53,7 +53,7 @@ export function ExportMenu({ markdown, title, subtitle, onToast }: Props) {
     run('Word export', async () => {
       const { downloadBlob, safeFilename } = await import('../lib/download');
       const blob = await buildDocx();
-      downloadBlob(blob, safeFilename(title, '.docx'));
+      await downloadBlob(blob, safeFilename(title, '.docx'));
       onToast({
         kind: 'success',
         message: 'Word document downloaded. Drag it into Google Drive and open it to convert it into a Google Doc.',
@@ -65,7 +65,7 @@ export function ExportMenu({ markdown, title, subtitle, onToast }: Props) {
       const { markdownToStandaloneHtml } = await import('../lib/exportHtml');
       const { downloadBlob, safeFilename } = await import('../lib/download');
       const html = await markdownToStandaloneHtml(markdown, { title, subtitle });
-      downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), safeFilename(title, '.html'));
+      await downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), safeFilename(title, '.html'));
     });
 
   const openPrintable = () =>

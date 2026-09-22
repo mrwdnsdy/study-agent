@@ -75,7 +75,7 @@ An API key must never be put into the page itself: the repository and the page a
 2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
 3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
 
-`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage) and `agentName` (the persona, default `Kiiku`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…` or `cf/@cf/…`; a list is a fallback chain. Visitors can still type one model for every task in Settings.
+`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage) and `agentName` (the persona, default `Kiiku`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…`, `cf/@cf/…` or `artifact/<tier>` (only inside a claude.ai artifact, see below); a list is a fallback chain. Visitors can still type one model for every task in Settings.
 
 ### Or let each visitor bring their own key
 
@@ -88,6 +88,15 @@ Leave `proxyUrl` empty and the page asks each visitor for an Anthropic API key i
 3. Optional: add a repository variable `VITE_GOOGLE_CLIENT_ID` to enable *Open in Google Docs* (the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`).
 
 Browser mode limits: PDFs must be under 20 MB (they are sent inline), PowerPoint decks are not rendered as images (no LibreOffice), and the Files API is not used.
+
+## Run it as a claude.ai artifact (your own Claude subscription)
+
+The same page can be published as a **claude.ai artifact** that asks Claude through the artifact runtime's `sample` capability. Every request then runs on the Claude account the viewer is signed in with (their claude.ai subscription, no API key and no credits), so it is the easiest way to test the agent privately before opening a site to others.
+
+- `npm run build:artifact` builds `dist-artifact/`: browser mode with relative paths, `artifact/config.json` baked in (one lane, `artifact/complex` for the study guide, `artifact/default` for chat, quizzes and reviews, `artifact/quick` for grading), `kiiku.html` (the page fragment to publish) and `manifest.json` (the supporting files with their content types).
+- Publish `kiiku.html` with the manifest's files as supporting files and the capabilities `sample` (Claude) and `downloads` (exports). Inside the viewer the page detects the runtime (`window.claude.use`), needs no Settings and shows "Claude (complex tier)" and friends as the model names.
+- The adapter (`shared/agent/providers/artifactSample.ts`) maps the agent's requests onto the runtime: the system prompt becomes a leading user turn, PDFs travel as the text extracted at upload, images go along as attachments where the view allows them, the transcript is trimmed to the runtime's 64 KB-per-request limit (oldest chat turns first, then material text, then the tail of long documents is kept), the guide continues automatically when an answer is cut short, tools run inside the call where the view offers them (otherwise a small JSON call protocol is used) and grading uses the runtime's JSON mode.
+- Limits: 64 KB of text per request means very long materials are truncated (upload one lecture per session); model tiers replace model names; no thinking summaries and no token counts are shown; the first request asks the viewer to allow the artifact to use Claude.
 
 ## Configuration
 

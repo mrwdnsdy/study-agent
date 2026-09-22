@@ -294,6 +294,8 @@ interface TurnHandlers {
   onText?: (delta: string) => void;
   onThinking?: (delta: string) => void;
   onToolStart?: (name: string) => void;
+  /** In-call tool execution for providers that support it (see LlmHandlers.executeTool). */
+  executeTool?: LlmHandlers['executeTool'];
 }
 
 function switchStatus(info: { from: string; to: string; reason: string }): string {
@@ -547,6 +549,13 @@ export async function runChat(
           opts.send({ type: 'thinking', text: t });
         },
         onToolStart: (name) => opts.send({ type: 'status', text: TOOL_STATUS[name] ?? `Using ${name}…` }),
+        // Providers that run tools inside the call (the artifact runtime) execute them here and return the final text.
+        executeTool: async (block) => {
+          const { result, event } = await executeTool(block, opts.hooks, opts.send);
+          toolEvents.push(event);
+          opts.send({ type: 'tool', name: event.name, summary: event.summary });
+          return result;
+        },
       },
       opts.send,
       opts.signal,

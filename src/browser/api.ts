@@ -24,6 +24,7 @@ import {
 import * as core from '../../shared/agent/core';
 import { displayModel } from '../../shared/agent/constants';
 import { AnthropicClient } from '../../shared/agent/providers/anthropic';
+import { ArtifactSampleClient, isArtifactHost, resolveRuntimeSample } from '../../shared/agent/providers/artifactSample';
 import { ChainLlmClient, type ProviderResolver } from '../../shared/agent/providers/chain';
 import { GeminiClient } from '../../shared/agent/providers/gemini';
 import { CAPABILITIES, OpenAICompatClient } from '../../shared/agent/providers/openaiCompat';
@@ -58,6 +59,9 @@ const nowIso = () => new Date().toISOString();
 export const MISSING_CREDENTIALS_MESSAGE =
   'Add your Anthropic API key (or a proxy URL) in Settings before using Claude features.';
 
+/** One runtime client per page: `claude.use('sample')` is memoised by the viewer and its limits are read once. */
+let artifactClient: ArtifactSampleClient | null = null;
+
 function context(): core.AgentContext {
   const settings = effectiveSettings();
   if (!hasCredentials(settings)) throw new Error(MISSING_CREDENTIALS_MESSAGE);
@@ -67,6 +71,11 @@ function context(): core.AgentContext {
   // Each provider is reached through the proxy path that holds its key; a bare
   // visitor key can only reach Claude directly.
   const resolve: ProviderResolver = (provider) => {
+    if (provider === 'artifact') {
+      if (!isArtifactHost()) return null;
+      artifactClient ??= new ArtifactSampleClient({ resolve: resolveRuntimeSample });
+      return artifactClient;
+    }
     if (provider === 'anthropic') {
       const client = new Anthropic({
         // A proxy replaces the key server-side; the SDK still needs a non-empty value.

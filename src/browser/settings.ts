@@ -9,6 +9,7 @@ import {
   resolveTaskModels,
   type Effort,
 } from '../../shared/agent/constants';
+import { isArtifactHost } from '../../shared/agent/providers/artifactSample';
 import type { AgentTask, LaneInfo, ProviderId, TaskModels } from '../../shared/types';
 
 /**
@@ -62,9 +63,11 @@ export interface SiteConfig {
   agentName?: string;
   /** Which providers the site proxy has keys for (fetched from the proxy). */
   providers?: Partial<Record<ProviderId, boolean>>;
+  /** True inside the claude.ai artifact viewer, where "artifact/…" models reach Claude on the viewer's own account. */
+  artifact?: boolean;
 }
 
-export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'none';
+export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'artifact' | 'none';
 
 /** Fully resolved values used to call the models. */
 export interface EffectiveSettings {
@@ -121,34 +124,48 @@ function cleanLane(raw: unknown): LaneConfig | undefined {
   };
 }
 
-/** Fetches public/config.json once at start-up (browser mode only). Missing or invalid files mean "no defaults". */
+function parseSiteConfig(raw: Record<string, unknown>): SiteConfig {
+  const lanes: Record<string, LaneConfig> = {};
+  if (raw.lanes && typeof raw.lanes === 'object') {
+    for (const [id, value] of Object.entries(raw.lanes as Record<string, unknown>)) {
+      const lane = cleanLane(value);
+      if (lane && /^[a-z0-9_-]+$/i.test(id)) lanes[id] = lane;
+    }
+  }
+  return {
+    proxyUrl: cleanString(raw.proxyUrl).replace(/\/+$/, '') || undefined,
+    accessCode: cleanString(raw.accessCode) || undefined,
+    model: cleanChain(raw.model),
+    models: cleanModels(raw.models),
+    escalationModel: cleanString(raw.escalationModel) || undefined,
+    lanes: Object.keys(lanes).length ? lanes : undefined,
+    defaultLane: cleanString(raw.defaultLane) || undefined,
+    effort: isEffort(raw.effort) ? raw.effort : undefined,
+    notice: cleanString(raw.notice) || undefined,
+    agentName: cleanString(raw.agentName) || undefined,
+  };
+}
+
+/**
+ * Loads the site defaults once at start-up (browser mode only): the config baked into the
+ * build (VITE_SITE_CONFIG, used by the artifact build) or public/config.json. Missing or
+ * invalid config means "no defaults".
+ */
 export async function loadSiteConfig(): Promise<SiteConfig> {
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}config.json`, { cache: 'no-store', headers: { Accept: 'application/json' } });
-    if (!response.ok) return (siteConfig = {});
-    const raw = (await response.json()) as Record<string, unknown>;
-    const lanes: Record<string, LaneConfig> = {};
-    if (raw.lanes && typeof raw.lanes === 'object') {
-      for (const [id, value] of Object.entries(raw.lanes as Record<string, unknown>)) {
-        const lane = cleanLane(value);
-        if (lane && /^[a-z0-9_-]+$/i.test(id)) lanes[id] = lane;
-      }
+    const embedded = import.meta.env.VITE_SITE_CONFIG as string | undefined;
+    let raw: Record<string, unknown> | null = null;
+    if (embedded) {
+      raw = JSON.parse(embedded) as Record<string, unknown>;
+    } else {
+      const response = await fetch(`${import.meta.env.BASE_URL}config.json`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (response.ok) raw = (await response.json()) as Record<string, unknown>;
     }
-    siteConfig = {
-      proxyUrl: cleanString(raw.proxyUrl).replace(/\/+$/, '') || undefined,
-      accessCode: cleanString(raw.accessCode) || undefined,
-      model: cleanChain(raw.model),
-      models: cleanModels(raw.models),
-      escalationModel: cleanString(raw.escalationModel) || undefined,
-      lanes: Object.keys(lanes).length ? lanes : undefined,
-      defaultLane: cleanString(raw.defaultLane) || undefined,
-      effort: isEffort(raw.effort) ? raw.effort : undefined,
-      notice: cleanString(raw.notice) || undefined,
-      agentName: cleanString(raw.agentName) || undefined,
-    };
+    siteConfig = raw ? parseSiteConfig(raw) : {};
+    siteConfig.artifact = isArtifactHost();
     if (siteConfig.proxyUrl) siteConfig.providers = await fetchProviders(siteConfig.proxyUrl);
   } catch {
-    siteConfig = {};
+    siteConfig = { artifact: isArtifactHost() };
   }
   return siteConfig;
 }
@@ -210,8 +227,12 @@ export function clearSettings(): void {
   }
 }
 
+function allFrom(provider: ProviderId, models: TaskModels, escalation?: string): boolean {
+  return [...Object.values(models).flat(), ...(escalation ? [escalation] : [])].every((ref) => parseModelRef(ref).provider === provider);
+}
+
 function allAnthropic(models: TaskModels, escalation?: string): boolean {
-  return [...Object.values(models).flat(), ...(escalation ? [escalation] : [])].every((ref) => parseModelRef(ref).provider === 'anthropic');
+  return allFrom('anthropic', models, escalation);
 }
 
 /** "off" disables; undefined means "Fable when everything else is Claude, otherwise none". */
@@ -252,7 +273,8 @@ function laneInfos(site: SiteConfig): LaneInfo[] {
 /**
  * Resolves what to use for the next model call. The visitor's own proxy wins,
  * then the visitor's own key (called directly, Claude only), then the site's
- * preset proxy with the chosen lane. A model the visitor typed applies to every task.
+ * preset proxy with the chosen lane, then the artifact runtime when the page is a
+ * claude.ai artifact. A model the visitor typed applies to every task.
  */
 export function effectiveSettings(saved: BrowserSettings = loadSettings(), site: SiteConfig = siteConfig): EffectiveSettings {
   const effort: Effort = saved.effort || site.effort || 'high';
@@ -298,6 +320,10 @@ export function effectiveSettings(saved: BrowserSettings = loadSettings(), site:
   const base = { apiKey: '', agentName, models, escalationModel: lane.escalationModel, effort, lane: lane.id, lanes, providers: site.providers };
   if (site.proxyUrl) {
     return { ...base, baseUrl: site.proxyUrl, accessCode: site.accessCode ?? '', source: 'site-proxy' };
+  }
+  // Inside the claude.ai artifact viewer, "artifact/…" models run on the viewer's own Claude account: nothing to configure.
+  if (site.artifact && allFrom('artifact', models, lane.escalationModel)) {
+    return { ...base, baseUrl: '', accessCode: '', source: 'artifact' };
   }
   return { ...base, baseUrl: '', accessCode: '', source: 'none' };
 }

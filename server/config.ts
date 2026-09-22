@@ -36,6 +36,8 @@ const providerKeys: Record<ProviderId, boolean> = {
   openrouter: Boolean(env('OPENROUTER_API_KEY')),
   zai: Boolean(env('ZAI_API_KEY')),
   'workers-ai': Boolean(env('WORKERS_AI_TOKEN') && env('CLOUDFLARE_ACCOUNT_ID')),
+  // Only reachable when the app runs as a claude.ai artifact, never from the server.
+  artifact: false,
 };
 
 export const config = {

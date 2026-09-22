@@ -1,0 +1,19 @@
+{
+  "defaultLane": "account",
+  "lanes": {
+    "account": {
+      "label": "Claude on your claude.ai account (through this artifact)",
+      "models": {
+        "guide": "artifact/complex",
+        "chat": "artifact/default",
+        "quiz": "artifact/default",
+        "grading": "artifact/quick",
+        "review": "artifact/default"
+      },
+      "escalationModel": "artifact/complex"
+    }
+  },
+  "effort": "high",
+  "notice": "Your study sessions stay in this browser. Each request goes to Claude on your own account, so it counts against your claude.ai usage.",
+  "agentName": "Kiiku"
+}

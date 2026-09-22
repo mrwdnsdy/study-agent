@@ -19,6 +19,9 @@ interface Props {
   onSaved: (settings: EffectiveSettings) => void;
 }
 
+/** Model choices when the app runs as a claude.ai artifact: the runtime's tiers. */
+const ARTIFACT_SUGGESTIONS = ['artifact/complex', 'artifact/default', 'artifact/quick'];
+
 const EFFORT_LABELS: Record<Effort, string> = {
   low: 'Low · fastest',
   medium: 'Medium',
@@ -46,6 +49,13 @@ function Intro({ resolved }: { resolved: EffectiveSettings }) {
       );
     case 'own-proxy':
       return <p className="muted small">You are using your own proxy. Requests go to it instead of to api.anthropic.com.</p>;
+    case 'artifact':
+      return (
+        <p className="muted small">
+          This copy of {resolved.agentName} runs on the Claude account you are signed in with on claude.ai; the first request asks you to allow
+          it. {site.notice}
+        </p>
+      );
     default:
       return (
         <p className="muted small">
@@ -84,6 +94,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
   if (!open) return null;
 
   const site = getSiteConfig();
+  const suggestions: readonly string[] = site.artifact ? ARTIFACT_SUGGESTIONS : MODEL_SUGGESTIONS;
   const set = <K extends keyof BrowserSettings>(key: K, value: BrowserSettings[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const normalised = (): BrowserSettings => ({
@@ -150,6 +161,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </fieldset>
             )}
 
+            {!site.artifact && (
             <label className="field">
               <span>{site.proxyUrl ? 'Your own Anthropic API key (optional)' : 'Anthropic API key'}</span>
               <span className="field__input-row">
@@ -174,6 +186,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                 . Usage is billed to that account.
               </span>
             </label>
+            )}
 
             <div className="field-row">
               <label className="field">
@@ -187,7 +200,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   spellCheck={false}
                 />
                 <datalist id="settings-model-suggestions">
-                  {MODEL_SUGGESTIONS.map((m) => (
+                  {suggestions.map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
@@ -216,6 +229,8 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </label>
             </div>
 
+            {!site.artifact && (
+              <>
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAdvanced((v) => !v)}>
               {advanced ? 'Hide proxy settings' : 'Use your own proxy…'}
             </button>
@@ -242,6 +257,8 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   <span className="field__hint">Only needed if that proxy was configured with one.</span>
                 </label>
               </div>
+            )}
+              </>
             )}
           </div>
 

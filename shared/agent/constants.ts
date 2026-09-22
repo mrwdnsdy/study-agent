@@ -57,7 +57,24 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   openrouter: 'OpenRouter',
   zai: 'Z.ai',
   'workers-ai': 'Cloudflare Workers AI',
+  artifact: 'Claude (your claude.ai account)',
 };
+
+/** Model tiers the artifact runtime offers; referenced as "artifact/<tier>". */
+export const ARTIFACT_TIERS = ['default', 'complex', 'quick'] as const;
+export type ArtifactTier = (typeof ARTIFACT_TIERS)[number];
+/** Per-task defaults when Claude is reached through the artifact runtime: the guide on the most capable tier, grading on the fastest. */
+export const ARTIFACT_TASK_MODELS: TaskModels = {
+  guide: ['artifact/complex'],
+  chat: ['artifact/default'],
+  quiz: ['artifact/default'],
+  grading: ['artifact/quick'],
+  review: ['artifact/default'],
+};
+
+export function isArtifactTier(value: string): value is ArtifactTier {
+  return (ARTIFACT_TIERS as readonly string[]).includes(value);
+}
 
 export function isEffort(value: unknown): value is Effort {
   return typeof value === 'string' && (EFFORTS as readonly string[]).includes(value);
@@ -74,7 +91,8 @@ export interface ModelRef {
 /**
  * "claude-opus-5" and "anthropic/claude-opus-5" → Anthropic; "gemini/gemini-3.8-flash" or a bare
  * "gemini-…" id → Google; "openrouter/<vendor>/<model>" → OpenRouter; "zai/<model>" → Z.ai;
- * "cf/@cf/<vendor>/<model>" or a bare "@cf/…" id → Cloudflare Workers AI.
+ * "cf/@cf/<vendor>/<model>" or a bare "@cf/…" id → Cloudflare Workers AI; "artifact/<tier>" → Claude through
+ * the claude.ai artifact runtime (tiers: default, complex, quick).
  */
 export function parseModelRef(ref: string): ModelRef {
   const value = ref.trim();
@@ -86,6 +104,7 @@ export function parseModelRef(ref: string): ModelRef {
   if (head === 'openrouter') return { provider: 'openrouter', model: rest, ref: value };
   if (head === 'zai' || head === 'z.ai' || head === 'zhipu') return { provider: 'zai', model: rest, ref: value };
   if (head === 'cf' || head === 'workers-ai' || head === 'cloudflare') return { provider: 'workers-ai', model: rest, ref: value };
+  if (head === 'artifact') return { provider: 'artifact', model: rest.toLowerCase() || 'default', ref: value };
   if (value.startsWith('@cf/')) return { provider: 'workers-ai', model: value, ref: value };
   if (/^gemini-/i.test(value)) return { provider: 'gemini', model: value, ref: value };
   return { provider: 'anthropic', model: value, ref: value };
@@ -98,6 +117,7 @@ export function displayModel(ref: string | string[] | undefined): string {
   if (!first) return '';
   const parsed = parseModelRef(first);
   if (parsed.provider === 'anthropic' || parsed.provider === 'gemini') return parsed.model;
+  if (parsed.provider === 'artifact') return `Claude (${parsed.model} tier)`;
   return `${parsed.model} (${PROVIDER_LABELS[parsed.provider]})`;
 }
 
