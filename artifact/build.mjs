@@ -27,6 +27,35 @@ const vite = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js');
 const build = spawnSync(process.execPath, [vite, 'build', '--outDir', outDir, '--emptyOutDir'], { cwd: root, env, stdio: 'inherit' });
 if (build.status !== 0) process.exit(build.status ?? 1);
 
+// The publisher refuses text files with raw control bytes (pdf.js and docx tables carry a few inside string
+// literals), so rewrite them as JavaScript escapes. Outside string, template and regex literals such bytes cannot
+// occur in valid JavaScript, and VT/FF (whitespace) are left alone.
+const CONTROL_BYTES = /[\x00-\x08\x0e-\x1f]/g;
+let escaped = 0;
+const escapeControls = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      escapeControls(full);
+      continue;
+    }
+    if (!/\.(m?js)$/.test(entry.name)) continue;
+    const source = fs.readFileSync(full, 'utf8');
+    if (!CONTROL_BYTES.test(source)) continue;
+    CONTROL_BYTES.lastIndex = 0;
+    const clean = source.replace(CONTROL_BYTES, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const check = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: clean, encoding: 'utf8' });
+    if (check.status !== 0) {
+      console.error(`Escaping control bytes broke ${entry.name}:\n${check.stderr}`);
+      process.exit(1);
+    }
+    fs.writeFileSync(full, clean);
+    escaped += 1;
+  }
+};
+escapeControls(path.join(outDir, 'assets'));
+if (escaped) console.log(`Escaped control bytes in ${escaped} file(s).`);
+
 // The publisher wraps the page in its own doctype/html/head/body, so publish the head and body contents as one fragment.
 const document = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
 const head = document.match(/<head>([\s\S]*?)<\/head>/i)?.[1] ?? '';
