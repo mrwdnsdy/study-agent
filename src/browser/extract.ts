@@ -7,6 +7,7 @@
 import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import { PDFDocument } from 'pdf-lib';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { MaterialKind } from '../../shared/types';
 import type { BrowserMaterial, BrowserPart, ImageMediaType } from './db';
 
@@ -70,22 +71,65 @@ function toBlobPart(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 // PDF
 // ---------------------------------------------------------------------------
 
+/** Longest PDF text kept for text-only models (about 100k tokens). */
+const MAX_PDF_TEXT_CHARS = 400_000;
+
+/**
+ * Page count and page text through pdf.js. Models without native PDF input
+ * (the open-weight fallbacks) receive this text instead of the file.
+ */
+async function readPdf(bytes: Uint8Array): Promise<{ pages: number; text: string }> {
+  const pdfjs = await import('pdfjs-dist');
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const task = pdfjs.getDocument({ data: bytes.slice(), disableFontFace: true, verbosity: 0 });
+  const doc = await task.promise;
+  try {
+    const chunks: string[] = [];
+    let length = 0;
+    for (let i = 1; i <= doc.numPages && length < MAX_PDF_TEXT_CHARS; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      page.cleanup();
+      if (text) {
+        const chunk = `[Page ${i}]\n${text}`;
+        chunks.push(chunk);
+        length += chunk.length;
+      }
+    }
+    return { pages: doc.numPages, text: chunks.join('\n\n') };
+  } finally {
+    await task.destroy();
+  }
+}
+
 async function extractPdf(base: Base, file: File): Promise<ExtractResult> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const head = new TextDecoder('latin1').decode(bytes.subarray(0, 1024));
   if (!head.includes('%PDF')) throw new Error(`"${base.name}" does not look like a PDF.`);
   let pages: number | undefined;
+  let text: string | undefined;
   try {
-    pages = (await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false })).getPageCount();
+    const read = await readPdf(bytes);
+    pages = read.pages;
+    text = read.text || undefined;
   } catch {
-    pages = undefined;
+    try {
+      pages = (await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false })).getPageCount();
+    } catch {
+      pages = undefined;
+    }
   }
   if (pages !== undefined && pages > MAX_PDF_PAGES) {
     throw new Error(`This PDF has ${pages} pages; the limit is ${MAX_PDF_PAGES} pages per file. Please split it.`);
   }
   const fileId = `${base.id}.pdf`;
   return {
-    material: { ...base, parts: [{ type: 'pdf', fileId, pages }], summary: pages ? plural(pages, 'page') : 'PDF document', pages },
+    material: { ...base, parts: [{ type: 'pdf', fileId, pages, ...(text ? { text } : {}) }], summary: pages ? plural(pages, 'page') : 'PDF document', pages },
     files: new Map([[fileId, new Blob([bytes], { type: 'application/pdf' })]]),
   };
 }

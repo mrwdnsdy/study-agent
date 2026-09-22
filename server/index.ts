@@ -3,6 +3,7 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { displayModel } from '../shared/agent/core.js';
 import type { ServerConfigResponse } from '../shared/types.js';
 import { materialsRouter, sofficePath } from './routes/materials.js';
 import { quizRouter } from './routes/quiz.js';
@@ -20,9 +21,10 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/config', async (_req, res) => {
   const body: ServerConfigResponse = {
     agentName: config.agentName,
-    model: config.models.guide,
+    model: displayModel(config.models.guide),
     models: config.models,
     escalationModel: config.escalationModel,
+    providers: config.providerKeys,
     hasApiKey: config.hasApiKey,
     sofficeAvailable: Boolean(await sofficePath()),
     maxUploadMb: config.maxUploadMb,
@@ -80,6 +82,6 @@ app.use((err: HttpError, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Study Agent API listening on http://localhost:${config.port} (guide: ${config.models.guide}, chat: ${config.models.chat}, escalation: ${config.escalationModel ?? 'off'}, effort: ${config.effort}, data: ${config.dataDir})`);
+  console.log(`Study Agent API listening on http://localhost:${config.port} (guide: ${config.models.guide.join(' → ')}, chat: ${config.models.chat.join(' → ')}, escalation: ${config.escalationModel ?? 'off'}, effort: ${config.effort}, data: ${config.dataDir})`);
   if (!config.hasApiKey) console.warn('ANTHROPIC_API_KEY is not set: Claude features will fail until it is configured in .env');
 });

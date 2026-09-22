@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BookOpen, ListTree, Loader2, RefreshCw, Sparkles, Square } from 'lucide-react';
 import { DEFAULT_GUIDE_PROMPT, type GuideQuality, type Session, type TaskModels } from '../../shared/types';
+import { displayModel } from '../../shared/agent/constants';
 import { relativeTime, titleFromMarkdown, wordCount } from '../lib/format';
 import { tableOfContents } from '../lib/toc';
 import type { StreamState, Toast } from '../state';
@@ -70,7 +71,7 @@ function PromptForm({
           Quality
           <select value={quality} onChange={(e) => setQuality(e.target.value as GuideQuality)} data-testid="guide-quality">
             <option value="standard">Standard · {guideModel ?? 'default model'}</option>
-            <option value="max">Maximum · {escalationModel} (slower, about twice the cost)</option>
+            <option value="max">Maximum · {displayModel(escalationModel)} (slower, about twice the cost)</option>
           </select>
         </label>
       )}
@@ -142,7 +143,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
           <PromptForm
             initial={DEFAULT_GUIDE_PROMPT}
             initialQuality="standard"
-            guideModel={models?.guide}
+            guideModel={displayModel(models?.guide)}
             escalationModel={escalationModel}
             agentName={agentName}
             hasMaterials={hasMaterials}
@@ -162,7 +163,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
           <strong>{title}</strong>
           <span className="muted small">
             v{session.guide.version} · {wordCount(markdown).toLocaleString()} words · updated {relativeTime(session.guide.updatedAt)}
-            {session.guide.model ? ` · ${session.guide.model}` : ''}
+            {session.guide.model ? ` · ${displayModel(session.guide.model)}` : ''}
           </span>
         </div>
         <div className="guide__actions">
@@ -180,7 +181,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
           <PromptForm
             initial={basePrompt(session.guide.prompt)}
             initialQuality={session.guide.model && session.guide.model === escalationModel ? 'max' : 'standard'}
-            guideModel={models?.guide}
+            guideModel={displayModel(models?.guide)}
             escalationModel={escalationModel}
             agentName={agentName}
             hasMaterials={hasMaterials}

@@ -3,9 +3,13 @@ main = "worker.js"
 compatibility_date = "2025-06-01"
 account_id = "99e391aa1b3b11ff29c88c0d8fd24c40"
 
-# Page origins allowed to use this proxy from a browser. Use "*" to allow any.
 [vars]
+# Page origins allowed to use this proxy from a browser. Use "*" to allow any.
 ALLOWED_ORIGINS = "https://mrwdnsdy.github.io"
+# Where the app lives; sent to OpenRouter as the HTTP-Referer for app attribution.
+APP_URL = "https://mrwdnsdy.github.io/study-agent/"
+# Cloudflare account whose Workers AI is used for /workers-ai requests (with the WORKERS_AI_TOKEN secret).
+CLOUDFLARE_ACCOUNT_ID = "99e391aa1b3b11ff29c88c0d8fd24c40"
 
 # Per-visitor cap: 40 requests per minute per IP address. Remove this block to disable.
 [[ratelimits]]
@@ -13,6 +17,10 @@ name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 40, period = 60 }
 
-# Secrets (never put these in this file):
-#   wrangler secret put ANTHROPIC_API_KEY   (required)
-#   wrangler secret put ACCESS_CODE         (optional passphrase visitors must enter)
+# Secrets (never put these in this file). Every provider secret is optional; each one enables that provider:
+#   wrangler secret put ANTHROPIC_API_KEY    Anthropic (Claude)
+#   wrangler secret put GEMINI_API_KEY       Google Gemini, the free lane (key from https://aistudio.google.com)
+#   wrangler secret put OPENROUTER_API_KEY   OpenRouter
+#   wrangler secret put ZAI_API_KEY          Z.ai
+#   wrangler secret put WORKERS_AI_TOKEN     Cloudflare API token with the Workers AI permission (uses CLOUDFLARE_ACCOUNT_ID above)
+#   wrangler secret put ACCESS_CODE          optional passphrase visitors must enter

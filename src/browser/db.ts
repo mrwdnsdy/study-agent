@@ -3,7 +3,7 @@ import type { MaterialKind, Session } from '../../shared/types';
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 
 export type BrowserPart =
-  | { type: 'pdf'; fileId: string; pages?: number }
+  | { type: 'pdf'; fileId: string; pages?: number; /** Extracted text for providers without native PDF input. */ text?: string }
   | { type: 'image'; fileId: string; mediaType: ImageMediaType; label?: string }
   | { type: 'text'; text: string; label?: string };
 

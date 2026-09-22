@@ -1,14 +1,19 @@
 /**
- * Server-side glue around the shared agent core: creates the Anthropic client
- * from the environment, turns extracted materials on disk into content blocks
- * (using the Files API where available) and forwards to the core.
+ * Server-side glue around the shared agent core: builds the provider chain from
+ * the environment, turns extracted materials on disk into content blocks (using
+ * the Anthropic Files API where every model is Claude) and forwards to the core.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import { config } from '../config.js';
-import type { ChatMessage, Quiz, QuizConfig, QuizQuestion, StreamEvent, StudyGuide } from '../../shared/types.js';
+import type { ChatMessage, ProviderId, Quiz, QuizConfig, QuizQuestion, StreamEvent, StudyGuide } from '../../shared/types.js';
 import * as core from '../../shared/agent/core.js';
+import { AnthropicClient } from '../../shared/agent/providers/anthropic.js';
+import { ChainLlmClient } from '../../shared/agent/providers/chain.js';
+import { GeminiClient } from '../../shared/agent/providers/gemini.js';
+import { CAPABILITIES, OpenAICompatClient } from '../../shared/agent/providers/openaiCompat.js';
+import { setPdfText } from '../../shared/agent/providers/pdfText.js';
 import type { ExtractedMaterial, MaterialPart } from './extract.js';
 
 export { buildQuiz, describeError, gradeChoice, basePrompt } from '../../shared/agent/core.js';
@@ -31,8 +36,60 @@ export function getClient(): Anthropic {
   return cachedClient;
 }
 
+const clients = new Map<ProviderId, core.LlmClient>();
+
+/** One client per provider that has credentials; the chain skips the rest. */
+function resolveProvider(provider: ProviderId): core.LlmClient | null {
+  const cached = clients.get(provider);
+  if (cached) return cached;
+  let client: core.LlmClient | null = null;
+  switch (provider) {
+    case 'anthropic':
+      if (config.providerKeys.anthropic) client = new AnthropicClient(getClient());
+      break;
+    case 'gemini':
+      if (config.geminiApiKey) client = new GeminiClient({ baseUrl: 'https://generativelanguage.googleapis.com', apiKey: config.geminiApiKey });
+      break;
+    case 'openrouter':
+      if (config.openrouterApiKey) {
+        client = new OpenAICompatClient({
+          provider,
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: config.openrouterApiKey,
+          headers: { 'HTTP-Referer': config.appUrl, 'X-Title': 'Study Agent' },
+          capabilities: CAPABILITIES.openrouter,
+        });
+      }
+      break;
+    case 'zai':
+      if (config.zaiApiKey) client = new OpenAICompatClient({ provider, baseUrl: 'https://api.z.ai/api/paas/v4', apiKey: config.zaiApiKey, capabilities: CAPABILITIES.zai });
+      break;
+    case 'workers-ai':
+      if (config.workersAiToken && config.cloudflareAccountId) {
+        client = new OpenAICompatClient({
+          provider,
+          baseUrl: `https://api.cloudflare.com/client/v4/accounts/${config.cloudflareAccountId}/ai/v1`,
+          apiKey: config.workersAiToken,
+          capabilities: CAPABILITIES['workers-ai'],
+        });
+      }
+      break;
+    default:
+      break;
+  }
+  if (client) clients.set(provider, client);
+  return client;
+}
+
+const llm = new ChainLlmClient(resolveProvider);
+
+/** Anthropic file ids only work on Claude; with any other provider in play, materials are inlined as base64. */
+const inlineOnly = !core
+  .providersOf(config.models, [config.escalationModel])
+  .every((provider) => provider === 'anthropic');
+
 function context(): core.AgentContext {
-  return { client: getClient(), models: config.models, effort: config.effort, escalationModel: config.escalationModel, agentName: config.agentName };
+  return { llm, models: config.models, effort: config.effort, escalationModel: config.escalationModel, agentName: config.agentName };
 }
 
 type Send = (event: StreamEvent) => void;
@@ -50,20 +107,24 @@ export async function materialsInput(materials: ExtractedMaterial[]): Promise<co
       if (part.type === 'text') {
         blocks.push({ type: 'text', text: `${part.label ? `[${material.name} — ${part.label}]\n` : ''}${part.text}` });
       } else if (part.type === 'pdf') {
-        blocks.push({
+        const block: Anthropic.DocumentBlockParam = {
           type: 'document',
           title: material.name,
-          source: part.fileId
-            ? { type: 'file', file_id: part.fileId }
-            : { type: 'base64', media_type: 'application/pdf', data: await fileBase64(part.path) },
-        });
+          source:
+            part.fileId && !inlineOnly
+              ? { type: 'file', file_id: part.fileId }
+              : { type: 'base64', media_type: 'application/pdf', data: await fileBase64(part.path) },
+        };
+        setPdfText(block, part.text);
+        blocks.push(block);
       } else {
         if (part.label) blocks.push({ type: 'text', text: `[${material.name} — ${part.label}]` });
         blocks.push({
           type: 'image',
-          source: part.fileId
-            ? { type: 'file', file_id: part.fileId }
-            : { type: 'base64', media_type: part.mediaType, data: await fileBase64(part.path) },
+          source:
+            part.fileId && !inlineOnly
+              ? { type: 'file', file_id: part.fileId }
+              : { type: 'base64', media_type: part.mediaType, data: await fileBase64(part.path) },
         });
       }
     }

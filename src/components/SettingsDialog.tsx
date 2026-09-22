@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
-import { EFFORTS, MODEL_SUGGESTIONS, type Effort } from '../../shared/agent/constants';
+import { EFFORTS, MODEL_SUGGESTIONS, PROVIDER_LABELS, displayModel, type Effort } from '../../shared/agent/constants';
+import type { ProviderId } from '../../shared/types';
 import {
   EMPTY_SETTINGS,
   clearSettings,
@@ -32,7 +33,7 @@ function Intro({ resolved }: { resolved: EffectiveSettings }) {
     case 'site-proxy':
       return (
         <p className="muted small">
-          This page comes with Claude access provided by the site owner, so you can start straight away. {site.notice}
+          This page comes with model access provided by the site owner, so you can start straight away. {site.notice}
           {site.notice ? ' ' : ''}Enter your own key below only if you would rather use your own Anthropic account.
         </p>
       );
@@ -69,6 +70,8 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
     setAdvanced(Boolean(current.baseUrl || current.accessCode));
   }, [open]);
 
+  const lanes = getSiteConfig().lanes ? effectiveSettings({ ...EMPTY_SETTINGS }, getSiteConfig()).lanes : [];
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -81,7 +84,6 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
   if (!open) return null;
 
   const site = getSiteConfig();
-  const defaults = effectiveSettings({ ...EMPTY_SETTINGS }, site);
   const set = <K extends keyof BrowserSettings>(key: K, value: BrowserSettings[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const normalised = (): BrowserSettings => ({
@@ -90,7 +92,11 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
     effort: form.effort,
     baseUrl: form.baseUrl.trim().replace(/\/+$/, ''),
     accessCode: form.accessCode.trim(),
+    lane: form.lane.trim(),
   });
+  const configured = Object.entries(site.providers ?? {})
+    .filter(([, ok]) => ok)
+    .map(([id]) => PROVIDER_LABELS[id as ProviderId]);
   const preview = effectiveSettings(normalised());
   const anythingSaved = Object.values(loadSettings()).some(Boolean);
 
@@ -124,6 +130,25 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
 
           <div className="modal__body">
             <Intro resolved={preview} />
+
+            {lanes.length > 1 && (
+              <fieldset className="field lanes" data-testid="settings-lanes">
+                <span>Models</span>
+                {lanes.map((lane) => (
+                  <label key={lane.id} className="lane">
+                    <input type="radio" name="lane" value={lane.id} checked={(preview.lane ?? '') === lane.id} onChange={() => set('lane', lane.id)} />
+                    <span className="lane__body">
+                      <span className="lane__label">{lane.label}</span>
+                      <span className="lane__meta">
+                        {lane.primary}
+                        {lane.escalation ? ` · maximum quality: ${lane.escalation}` : ''}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+                {configured.length > 0 && <span className="field__hint">Keys on this site: {configured.join(', ')}.</span>}
+              </fieldset>
+            )}
 
             <label className="field">
               <span>{site.proxyUrl ? 'Your own Anthropic API key (optional)' : 'Anthropic API key'}</span>
@@ -167,13 +192,15 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   ))}
                 </datalist>
                 <span className="field__hint">
-                  Defaults: study guide on <code>{defaults.models.guide}</code>; chat, quizzes and grading on <code>{defaults.models.chat}</code>
-                  {defaults.escalationModel ? (
+                  Current: study guide on <code>{displayModel(preview.models.guide)}</code>
+                  {preview.models.guide.length > 1 ? ` (+${preview.models.guide.length - 1} fallback${preview.models.guide.length > 2 ? 's' : ''})` : ''}; chat, quizzes and
+                  grading on <code>{displayModel(preview.models.chat)}</code>
+                  {preview.escalationModel ? (
                     <>
-                      ; <code>{defaults.escalationModel}</code> for maximum-quality guides and whenever a model declines
+                      ; <code>{displayModel(preview.escalationModel)}</code> for maximum-quality guides and whenever a model declines
                     </>
                   ) : null}
-                  .
+                  . Typing a model here uses it for every task.
                 </span>
               </label>
               <label className="field">

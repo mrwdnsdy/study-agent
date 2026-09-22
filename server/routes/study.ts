@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_GUIDE_PROMPT, type ChatMessage, type StudyGuide } from '../../shared/types.js';
 import { basePrompt, buildQuiz, describeError, generateGuide, runChat, type ChatHooks } from '../lib/claude.js';
+import { displayModel } from '../../shared/agent/constants.js';
 import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { nowIso, startStream } from './helpers.js';
@@ -30,7 +31,7 @@ studyRouter.post('/:id/generate', async (req, res) => {
       id: newId(),
       role: 'assistant',
       kind: 'guide',
-      content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${result.model}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+      content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${displayModel(result.model)}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
       thinking: result.thinking || undefined,
       createdAt: nowIso(),
     };

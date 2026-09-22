@@ -5,9 +5,26 @@
 
 export type MaterialKind = 'pdf' | 'pptx' | 'docx' | 'image' | 'text';
 
-/** The kinds of Claude call the agent makes; each can run on its own model. */
+/** The kinds of model call the agent makes; each can run on its own model chain. */
 export type AgentTask = 'guide' | 'chat' | 'quiz' | 'grading' | 'review';
-export type TaskModels = Record<AgentTask, string>;
+/**
+ * Per task, an ordered fallback chain of model references such as
+ * "claude-opus-5", "gemini/gemini-3.8-flash", "openrouter/qwen/qwen3.8-27b:free",
+ * "zai/glm-4.7-flash" or "cf/@cf/google/gemma-4-26b-a4b-it". The first model that
+ * answers wins; the next is tried when one fails before producing output.
+ */
+export type TaskModels = Record<AgentTask, string[]>;
+/** Model providers the agent can talk to. */
+export type ProviderId = 'anthropic' | 'gemini' | 'openrouter' | 'zai' | 'workers-ai';
+/** A selectable set of models, e.g. "free" (Gemini first) or "claude" (premium). */
+export interface LaneInfo {
+  id: string;
+  label: string;
+  /** Display name of the model that writes study guides in this lane. */
+  primary: string;
+  /** Display name of the escalation model, when the lane has one. */
+  escalation?: string;
+}
 /** "max" writes the study guide with the escalation model (Claude Fable): best quality, about twice the cost. */
 export type GuideQuality = 'standard' | 'max';
 
@@ -181,12 +198,17 @@ export interface AnswerResponse {
 export interface ServerConfigResponse {
   /** Persona name of the study agent. */
   agentName: string;
-  /** Model used for the study guide (shown in the header). */
+  /** Display name of the model that writes the study guide (shown in the header). */
   model: string;
-  /** Model per task. */
+  /** Model chain per task. */
   models: TaskModels;
   /** Model tried when a task's model declines, and used for maximum-quality guides. */
   escalationModel?: string;
+  /** Active lane and the lanes the visitor can switch between (browser mode). */
+  lane?: string;
+  lanes?: LaneInfo[];
+  /** Which providers have credentials (from the proxy or the server environment). */
+  providers?: Partial<Record<ProviderId, boolean>>;
   hasApiKey: boolean;
   sofficeAvailable: boolean;
   maxUploadMb: number;

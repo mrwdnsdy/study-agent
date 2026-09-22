@@ -2133,3 +2133,46 @@ fieldset legend {
     gap: 12px;
   }
 }
+
+.lanes {
+  border: 0;
+  padding: 0;
+  gap: 6px;
+}
+
+.lane {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.lane:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.lane input {
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+
+.lane__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lane__label {
+  font-weight: 600;
+}
+
+.lane__meta {
+  font-size: 12px;
+  color: var(--text-2);
+}

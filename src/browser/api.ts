@@ -22,6 +22,12 @@ import {
   type StudyGuide,
 } from '../../shared/types';
 import * as core from '../../shared/agent/core';
+import { displayModel } from '../../shared/agent/constants';
+import { AnthropicClient } from '../../shared/agent/providers/anthropic';
+import { ChainLlmClient, type ProviderResolver } from '../../shared/agent/providers/chain';
+import { GeminiClient } from '../../shared/agent/providers/gemini';
+import { CAPABILITIES, OpenAICompatClient } from '../../shared/agent/providers/openaiCompat';
+import { setPdfText } from '../../shared/agent/providers/pdfText';
 import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits';
 import { DEFAULT_SESSION_TITLE, blankSession, summarizeSession, titleFromFilename } from '../../shared/session';
 import type { Api } from '../lib/api';
@@ -55,18 +61,47 @@ export const MISSING_CREDENTIALS_MESSAGE =
 function context(): core.AgentContext {
   const settings = effectiveSettings();
   if (!hasCredentials(settings)) throw new Error(MISSING_CREDENTIALS_MESSAGE);
-  const { apiKey, baseUrl: baseURL, accessCode } = settings;
-  const client = new Anthropic({
-    // A proxy replaces the key server-side; the SDK still needs a non-empty value.
-    apiKey: apiKey || 'proxy',
-    baseURL: baseURL || undefined,
-    dangerouslyAllowBrowser: true,
-    defaultHeaders: accessCode ? { 'x-access-code': accessCode } : undefined,
-    // Milliseconds; long guides stream for many minutes.
-    timeout: 30 * 60 * 1000,
-    maxRetries: 2,
-  });
-  return { client, models: settings.models, effort: settings.effort, escalationModel: settings.escalationModel, agentName: settings.agentName };
+  const { apiKey, baseUrl, accessCode } = settings;
+  const headers = accessCode ? { 'x-access-code': accessCode } : undefined;
+
+  // Each provider is reached through the proxy path that holds its key; a bare
+  // visitor key can only reach Claude directly.
+  const resolve: ProviderResolver = (provider) => {
+    if (provider === 'anthropic') {
+      const client = new Anthropic({
+        // A proxy replaces the key server-side; the SDK still needs a non-empty value.
+        apiKey: apiKey || 'proxy',
+        baseURL: baseUrl ? `${baseUrl}/anthropic` : undefined,
+        dangerouslyAllowBrowser: true,
+        defaultHeaders: headers,
+        // Milliseconds; long guides stream for many minutes.
+        timeout: 30 * 60 * 1000,
+        maxRetries: 2,
+      });
+      return new AnthropicClient(client);
+    }
+    if (!baseUrl) return null;
+    if (settings.providers && settings.providers[provider] === false) return null;
+    switch (provider) {
+      case 'gemini':
+        return new GeminiClient({ baseUrl: `${baseUrl}/gemini`, headers });
+      case 'openrouter':
+        return new OpenAICompatClient({ provider, baseUrl: `${baseUrl}/openrouter/v1`, headers, capabilities: CAPABILITIES.openrouter });
+      case 'zai':
+        return new OpenAICompatClient({ provider, baseUrl: `${baseUrl}/zai`, headers, capabilities: CAPABILITIES.zai });
+      case 'workers-ai':
+        return new OpenAICompatClient({ provider, baseUrl: `${baseUrl}/workers-ai`, headers, capabilities: CAPABILITIES['workers-ai'] });
+      default:
+        return null;
+    }
+  };
+  return {
+    llm: new ChainLlmClient(resolve),
+    models: settings.models,
+    effort: settings.effort,
+    escalationModel: settings.escalationModel,
+    agentName: settings.agentName,
+  };
 }
 
 /** Runs a streaming operation, turning SDK errors into the same friendly messages the server sends. */
@@ -145,7 +180,9 @@ async function materialsInput(sessionId: string): Promise<core.MaterialsInput> {
       }
       const data = await blobToBase64(blob);
       if (part.type === 'pdf') {
-        blocks.push({ type: 'document', title: material.name, source: { type: 'base64', media_type: 'application/pdf', data } });
+        const block: Anthropic.DocumentBlockParam = { type: 'document', title: material.name, source: { type: 'base64', media_type: 'application/pdf', data } };
+        setPdfText(block, part.text);
+        blocks.push(block);
       } else {
         if (part.label) blocks.push({ type: 'text', text: `[${material.name} — ${part.label}]` });
         blocks.push({ type: 'image', source: { type: 'base64', media_type: part.mediaType, data } });
@@ -164,9 +201,12 @@ export const browserApi: Api = {
     const settings = effectiveSettings();
     return {
       agentName: settings.agentName,
-      model: settings.models.guide,
+      model: displayModel(settings.models.guide),
       models: settings.models,
       escalationModel: settings.escalationModel,
+      lane: settings.lane,
+      lanes: settings.lanes,
+      providers: settings.providers,
       hasApiKey: hasCredentials(settings),
       sofficeAvailable: false,
       maxUploadMb: MAX_UPLOAD_MB,
@@ -283,7 +323,7 @@ export const browserApi: Api = {
         id: newId(),
         role: 'assistant',
         kind: 'guide',
-        content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${result.model}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+        content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${displayModel(result.model)}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
         thinking: result.thinking || undefined,
         createdAt: nowIso(),
       };

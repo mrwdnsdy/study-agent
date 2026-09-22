@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import JSZip from 'jszip';
 import mammoth from 'mammoth';
@@ -36,7 +37,7 @@ import type { MaterialKind } from '../../shared/types.js';
 // ---------------------------------------------------------------------------
 
 export type MaterialPart =
-  | { type: 'pdf'; path: string; pages?: number; fileId?: string }
+  | { type: 'pdf'; path: string; pages?: number; fileId?: string; /** Extracted text for models without native PDF input. */ text?: string }
   | {
       type: 'image';
       path: string;
@@ -239,6 +240,43 @@ type MaterialBase = Pick<ExtractedMaterial, 'id' | 'name' | 'kind' | 'sizeBytes'
 // PDF
 // ---------------------------------------------------------------------------
 
+/** Longest PDF text kept for text-only models (about 100k tokens). */
+const MAX_PDF_TEXT_CHARS = 400_000;
+
+/** Page text through pdf.js, for models without native PDF input. Undefined when the file cannot be read. */
+export async function pdfText(bytes: Uint8Array): Promise<string | undefined> {
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const standardFontDataUrl = `${path.dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json')))}/standard_fonts/`;
+    const task = pdfjs.getDocument({ data: new Uint8Array(bytes), disableFontFace: true, standardFontDataUrl, verbosity: 0 });
+    const doc = await task.promise;
+    try {
+      const chunks: string[] = [];
+      let length = 0;
+      for (let i = 1; i <= doc.numPages && length < MAX_PDF_TEXT_CHARS; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        const text = content.items
+          .map((item) => ('str' in item ? item.str : ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        page.cleanup();
+        if (text) {
+          const chunk = `[Page ${i}]\n${text}`;
+          chunks.push(chunk);
+          length += chunk.length;
+        }
+      }
+      return chunks.join('\n\n') || undefined;
+    } finally {
+      await task.destroy();
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 async function extractPdf(base: MaterialBase, filePath: string): Promise<ExtractedMaterial> {
   const bytes = await fs.readFile(filePath);
   // The header may be preceded by a little junk; PDF readers tolerate that, so look within the first KB.
@@ -250,9 +288,10 @@ async function extractPdf(base: MaterialBase, filePath: string): Promise<Extract
     throw new Error(`This PDF has ${pages} pages; the limit is ${MAX_PDF_PAGES} pages per file. Please split it.`);
   }
   if (pages === 0) throw new Error(`"${base.name}" has no pages.`);
+  const text = await pdfText(bytes);
   return {
     ...base,
-    parts: [{ type: 'pdf', path: filePath, pages }],
+    parts: [{ type: 'pdf', path: filePath, pages, ...(text ? { text } : {}) }],
     summary: pages === undefined ? 'PDF document' : formatCount(pages, 'page'),
     pages,
   };

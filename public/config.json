@@ -1,14 +1,32 @@
 {
   "proxyUrl": "https://study-agent-proxy.sdnbrothersinc.workers.dev",
   "accessCode": "",
-  "models": {
-    "guide": "claude-opus-5",
-    "chat": "claude-sonnet-5",
-    "quiz": "claude-sonnet-5",
-    "grading": "claude-sonnet-5",
-    "review": "claude-sonnet-5"
+  "defaultLane": "free",
+  "lanes": {
+    "free": {
+      "label": "Free (Gemini first, open models as backup)",
+      "model": [
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.5-flash-lite",
+        "openrouter/qwen/qwen3.8-27b:free",
+        "openrouter/nex-agi/nex-n2.5-pro:free",
+        "zai/glm-4.6v-flash",
+        "cf/@cf/google/gemma-4-26b-a4b-it"
+      ],
+      "escalationModel": "off"
+    },
+    "claude": {
+      "label": "Claude (premium)",
+      "models": {
+        "guide": "claude-opus-5",
+        "chat": "claude-sonnet-5",
+        "quiz": "claude-sonnet-5",
+        "grading": "claude-sonnet-5",
+        "review": "claude-sonnet-5"
+      },
+      "escalationModel": "claude-fable-5-1"
+    }
   },
-  "escalationModel": "claude-fable-5-1",
   "effort": "high",
   "notice": "",
   "agentName": "Kiiku"

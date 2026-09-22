@@ -348,7 +348,10 @@ export default function App() {
         </nav>
         <div className="topbar__meta">
           {config && (
-            <span className="pill pill--muted" title={`Study guide: ${config.models.guide} · chat, quizzes, grading, reviews: ${config.models.chat}`}>
+            <span
+              className="pill pill--muted"
+              title={`Study guide: ${config.models.guide.join(' → ')} · chat, quizzes, grading, reviews: ${config.models.chat.join(' → ')}`}
+            >
               {config.model}
             </span>
           )}
