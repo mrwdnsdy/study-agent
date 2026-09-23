@@ -150,6 +150,15 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
 
           <div className="modal__body">
             <Intro resolved={preview} />
+            {site.artifactUrl && !site.artifact && (
+              <p className="muted small" data-testid="settings-artifact-link">
+                Prefer to run {preview.agentName} on your own account?{' '}
+                <a href={site.artifactUrl} target="_blank" rel="noreferrer">
+                  {site.artifactLabel ?? 'Open the artifact version'}
+                </a>
+                .
+              </p>
+            )}
 
             {lanes.length > 1 && (
               <fieldset className="field lanes" data-testid="settings-lanes">

@@ -67,6 +67,9 @@ export interface SiteConfig {
   artifact?: boolean;
   /** False for a white-label page: the UI never names the providers or models in use. */
   showModels?: boolean;
+  /** Where the artifact version of the app lives (runs on the visitor's own account); linked from the page. */
+  artifactUrl?: string;
+  artifactLabel?: string;
 }
 
 export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'artifact' | 'none';
@@ -148,6 +151,8 @@ function parseSiteConfig(raw: Record<string, unknown>): SiteConfig {
     notice: cleanString(raw.notice) || undefined,
     agentName: cleanString(raw.agentName) || undefined,
     showModels: raw.showModels === false ? false : undefined,
+    artifactUrl: /^https:\/\//i.test(cleanString(raw.artifactUrl)) ? cleanString(raw.artifactUrl) : undefined,
+    artifactLabel: cleanString(raw.artifactLabel) || undefined,
   };
 }
 

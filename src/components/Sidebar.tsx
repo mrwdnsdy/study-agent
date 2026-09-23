@@ -209,6 +209,14 @@ export function Sidebar({
             <>
               {config.lanes && config.lanes.length > 1 ? `${config.lanes.find((l) => l.id === config.lane)?.label ?? config.lane} · ` : ''}Your files and guides stay on this
               device.
+              {config.artifactUrl && (
+                <>
+                  {' '}
+                  <a href={config.artifactUrl} target="_blank" rel="noreferrer">
+                    {config.artifactLabel ?? 'Use it with your own account'}
+                  </a>
+                </>
+              )}
             </>
           ) : getMode() === 'browser' ? (
             <>
@@ -217,6 +225,14 @@ export function Sidebar({
               {config.models.guide.length > 1 ? ` (+${config.models.guide.length - 1} fallbacks)` : ''}, other tasks on <code>{displayModel(config.models.chat)}</code>
               {effectiveSettings().source === 'site-proxy' ? ' · model access provided by this site' : ' · your own key'} · your files and guides stay on
               this device
+              {config.artifactUrl && (
+                <>
+                  {' · '}
+                  <a href={config.artifactUrl} target="_blank" rel="noreferrer">
+                    {config.artifactLabel ?? 'Use it with your own account'}
+                  </a>
+                </>
+              )}
             </>
           ) : (
             <>

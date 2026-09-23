@@ -215,6 +215,9 @@ export interface ServerConfigResponse {
   hasApiKey: boolean;
   /** False on white-label deployments: the UI never names the providers or models in use. */
   showModels: boolean;
+  /** Link to the artifact version of the app (runs on the visitor's own account), shown in the footer and Settings. */
+  artifactUrl?: string;
+  artifactLabel?: string;
   sofficeAvailable: boolean;
   maxUploadMb: number;
 }

@@ -34,7 +34,7 @@ import { DEFAULT_SESSION_TITLE, blankSession, summarizeSession, titleFromFilenam
 import type { Api } from '../lib/api';
 import { localDb, partFileIds } from './db';
 import { detectKind, extractFile } from './extract';
-import { effectiveSettings, hasCredentials, type EffectiveSettings } from './settings';
+import { effectiveSettings, getSiteConfig, hasCredentials, type EffectiveSettings } from './settings';
 
 /** Inline PDFs count against Claude's 32 MB request limit once base64-encoded. */
 const MAX_PDF_MB = 20;
@@ -227,6 +227,9 @@ export const browserApi: Api = {
       providers: settings.providers,
       hasApiKey: hasCredentials(settings),
       showModels: settings.showModels,
+      // The artifact link is for visitors of the web page; inside the artifact itself it is pointless.
+      artifactUrl: isArtifactHost() ? undefined : getSiteConfig().artifactUrl,
+      artifactLabel: getSiteConfig().artifactLabel,
       sofficeAvailable: false,
       maxUploadMb: MAX_UPLOAD_MB,
     };

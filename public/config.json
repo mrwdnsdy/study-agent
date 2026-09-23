@@ -14,21 +14,12 @@
         "cf/@cf/google/gemma-4-26b-a4b-it"
       ],
       "escalationModel": "off"
-    },
-    "claude": {
-      "label": "Premium",
-      "models": {
-        "guide": "claude-opus-5",
-        "chat": "claude-sonnet-5",
-        "quiz": "claude-sonnet-5",
-        "grading": "claude-sonnet-5",
-        "review": "claude-sonnet-5"
-      },
-      "escalationModel": "claude-fable-5-1"
     }
   },
   "effort": "high",
   "notice": "Kiiku is in testing; model access is provided by this site while it lasts.",
   "agentName": "Kiiku",
-  "showModels": false
+  "showModels": false,
+  "artifactUrl": "https://claude.ai/artifact/V2iDGWczGYfSGJx6cRHEvi",
+  "artifactLabel": "Use Kiiku with your own account"
 }
