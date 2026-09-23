@@ -44,7 +44,9 @@ Open <http://localhost:5173>, drop your slides into the sidebar, and press **Gen
 3. **Talk to the agent** in the chat panel. Quick actions cover the common requests (explain a slide, list every formula, likely exam questions, quiz me). Ask for changes and the guide updates in place.
 4. **Quiz yourself** from the Quiz tab (choose length, difficulty, question types and an optional focus) or by asking in chat. You get feedback after every question.
 5. **Review** from the Review tab after a quiz. Use *Quiz me on weak areas* and *Discuss in chat* to keep the loop going.
-6. **Export or save to Google Drive** from the toolbar above the guide, or from the menus on reviews, quizzes and the chat.
+6. **Export or save to Google Drive** from the toolbar above the guide, or from the menus on reviews, quizzes and the chat. Each diagram also has its own buttons: *Expand* (full screen), *Download PNG* and *Save to Drive*.
+
+Long answers survive hiccups. When the connection drops or the model is busy partway through, Kiiku waits and picks up where it left off. If it still cannot finish (or you press *Stop*), what it wrote is saved and a banner offers *Continue writing*; a cut-off chat reply gets a *Continue* button. Before a guide, review or reply is saved, its diagrams are checked: small syntax slips are fixed on the spot and anything still broken is sent back to the model once, so the saved text and every export hold diagrams that draw.
 
 ## Exports
 

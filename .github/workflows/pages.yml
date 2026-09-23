@@ -32,7 +32,7 @@ jobs:
         env:
           VITE_BROWSER_MODE: 'true'
           VITE_BASE: /${{ github.event.repository.name }}/
-          # Optional: a repository variable with a Google OAuth client id enables "Open in Google Docs".
+          # Optional: a Google OAuth client id enables "Save to Google Drive". The usual place is "googleClientId" in public/config.json; this repository variable is the build-time fallback.
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
