@@ -70,8 +70,9 @@ export interface DocxExportOptions {
   author?: string;
   /**
    * Renders a mermaid diagram to PNG. Defaults to `mermaidToPng` from ./mermaid
-   * (lazy-imported so Node tests can stub it). Return null to fall back to
-   * rendering the diagram source as a code block.
+   * (lazy-imported so Node tests can stub it), which draws the diagram as
+   * written or else its repaired version, as the app does. Return null to fall
+   * back to rendering the diagram source as a code block.
    */
   renderDiagram?: (code: string) => Promise<DiagramImage | null>;
   onProgress?: (message: string) => void;
@@ -964,6 +965,7 @@ function buildFooter(title: string): Footer {
 // Diagram rendering
 // ---------------------------------------------------------------------------
 async function defaultRenderDiagram(code: string): Promise<DiagramImage | null> {
+  // Same resolver as the app (original, then repaired); null only for diagrams that are genuinely broken.
   const { mermaidToPng } = await import('./mermaid');
   const png = await mermaidToPng(code, 2);
   if (!png) return null;

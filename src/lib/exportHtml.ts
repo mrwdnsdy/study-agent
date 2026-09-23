@@ -23,7 +23,8 @@ export interface HtmlExportOptions {
   subtitle?: string;
   /**
    * Renders a mermaid diagram to an SVG string. Defaults to `renderMermaidSvg`
-   * from ./mermaid (lazy-imported). Return null to show the source instead.
+   * from ./mermaid (lazy-imported), which draws the diagram as written or else
+   * its repaired version, as the app does. Return null to show the source instead.
    */
   renderSvg?: (code: string) => Promise<string | null>;
 }
@@ -344,6 +345,8 @@ function formatDate(date: Date): string {
 
 async function defaultRenderSvg(code: string): Promise<string | null> {
   try {
+    // Validates first and falls back to the repaired diagram (resolveMermaidCode), so a
+    // diagram that renders in the app renders here too; a broken one throws and shows its source.
     const { renderMermaidSvg } = await import('./mermaid');
     return await renderMermaidSvg(code);
   } catch {

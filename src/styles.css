@@ -1491,22 +1491,24 @@ fieldset legend {
 }
 
 .diagram {
+  position: relative;
   margin: 16px 0 20px;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--diagram-bg);
-  overflow-x: auto;
 }
 
+/* Diagrams keep their natural size (MermaidDiagram sets the width) and scroll sideways in a narrower column. */
 .diagram__svg {
-  display: flex;
-  justify-content: center;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
+/* Auto margins centre a narrow diagram and drop to 0 when it overflows, so its left edge stays reachable. */
 .diagram__svg svg {
-  max-width: 100%;
-  height: auto;
+  display: block;
+  margin: 0 auto;
 }
 
 .diagram--pending,

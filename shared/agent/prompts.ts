@@ -9,6 +9,38 @@ export interface MaterialInfo {
 }
 
 /**
+ * How to write diagrams that Mermaid 12 renders, per diagram type. The old
+ * flowchart rules (quote every label, colour with classDef) were applied to
+ * every type and broke most of them: classDef is a parse error in sequence,
+ * timeline and pie diagrams, and quotes show up as text in mindmaps. Shared
+ * with the diagram fixer (diagramRepairLlm.ts) so both follow the same rules.
+ */
+export const MERMAID_RULES = [
+  '- Allowed types: flowchart, sequenceDiagram, stateDiagram-v2, classDiagram, mindmap, timeline, pie. Prefer flowchart TD; use flowchart LR only for 5 or fewer short steps.',
+  '- About 6–12 nodes per diagram. Keep labels to 6 words or fewer; in flowcharts break a longer label with <br/>.',
+  '- Flowcharts only:',
+  '  - Quote every node label, e.g. A["Label (with) punctuation"], and every edge label, e.g. A -->|"label"| B.',
+  '  - Node ids are simple words such as A, parse or step2. Never use end as an id.',
+  '  - Colour only with these four classes, applied with class A,B core (no spaces after the commas) or a :::core suffix:',
+  '    classDef core fill:#FBEFD0,stroke:#D9961A,color:#14343B',
+  '    classDef info fill:#DCE9EE,stroke:#1F6F78,color:#14484E',
+  '    classDef good fill:#E6EFD6,stroke:#6E9A3C,color:#2E4B14',
+  '    classDef warn fill:#FBE4CF,stroke:#A8521A,color:#6E3510',
+  '- stateDiagram-v2: declare states as state "Label" as S1 and write transitions as S1 --> S2 : event. The same four classDef classes are allowed.',
+  '- mindmap: two-space indentation per level; the root is root((Topic)); every other node is plain text with no quotes, brackets, parentheses or colons and no leading "1.", "-" or "#". No classDef, class or style.',
+  '- sequenceDiagram, timeline, pie and classDiagram: plain-text labels with no quotes around message text; no classDef, class or style; no semicolons inside messages or notes. Pie slices are written "Label" : 42, with the label in quotes and the value a plain number without %.',
+  '- Every diagram: no %%{init}%% directives or front matter; no markdown or HTML inside the diagram (only <br/> in flowchart labels) and no backticks; one statement per line.',
+  '- Nothing else goes inside the fence: the one-line italic caption saying what to notice goes on its own line after the closing fence.',
+].join('\n');
+
+function indent(text: string, prefix: string): string {
+  return text
+    .split('\n')
+    .map((line) => prefix + line)
+    .join('\n');
+}
+
+/**
  * One frozen system prompt is shared by every flow (guide, chat, quiz, review)
  * so the cached prefix (system → materials → guide) is reused across calls.
  * Mode-specific instructions travel in the user message instead. The text is a
@@ -41,7 +73,8 @@ export function systemPrompt(agentName: string): string {
   > **🔑 Key concept:** …
   > **✅ Best practice:** …
   > **🧠 Memory aid:** …
-- Diagrams are Mermaid code fences (\`\`\`mermaid). Choose the type that fits: flowchart TD / LR for processes, pipelines and hierarchies; sequenceDiagram for interactions over time; stateDiagram-v2 for lifecycles; classDiagram for structures and relationships; mindmap for topic maps; timeline for chronology; pie or quadrantChart for proportions and comparisons. Keep each diagram focused (about 6–20 nodes). Syntax rules that must be followed so the diagram renders: put every node label in double quotes, e.g. A["Label with (parentheses), colons: and commas"]; use <br/> for line breaks inside a quoted label; never use the word end as a bare node id; no semicolons, HTML tags other than <br/>, or backticks in labels; one statement per line; in mindmaps indent consistently with spaces and keep labels plain. Make diagrams colourful with classDef lines such as classDef core fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b and classDef good fill:#dcfce7,stroke:#16a34a,color:#14532d and classDef warn fill:#fef3c7,stroke:#d97706,color:#78350f, applied with class A,B core or with :::core suffixes. After every diagram add a one-line italic caption explaining what to notice.
+- Diagrams are Mermaid code fences (\`\`\`mermaid). Choose the type that fits: flowchart for processes, pipelines and hierarchies; sequenceDiagram for interactions over time; stateDiagram-v2 for lifecycles; classDiagram for structures and relationships; mindmap for topic maps; timeline for chronology; pie for proportions. Make them colourful and focused, and follow these rules exactly so that every diagram renders:
+${indent(MERMAID_RULES, '  ')}
 - Maths: plain text or inline code (e.g. \`E = mc^2\`, \`P(A|B) = P(B|A)·P(A)/P(B)\`); no LaTeX.
 - Documents start directly with their title: no preamble, no closing remarks.
 
@@ -79,7 +112,7 @@ My instructions: "${prompt.trim()}"
 Required structure (adapt the wording to the subject):
 1. \`# <Module title> — Complete Study Guide\` then a short orientation paragraph and a bullet list of learning objectives.
 2. \`## Module map\` — a mermaid mindmap or flowchart of the whole module.
-3. \`## Slide-by-slide walkthrough\` (or section-by-section for notes) — for EVERY slide/page/section in order: \`### Slide N — <title>\`, then: what the slide says (faithful to the source), the concept explained in depth with the "why", a worked example or analogy where helpful, callouts for gold-standard tips, best practice, common pitfalls and exam alerts, and a diagram whenever a process, relationship, structure or comparison is involved. Combine only trivially thin slides (title, agenda) and say so.
+3. \`## Slide-by-slide walkthrough\` (or section-by-section for notes) — for EVERY slide/page/section in order: \`### Slide N — <title>\`, then: the slide's content restated faithfully in your own words (never copy slide text verbatim; quote only a short definition or formula where the exact wording matters), the concept explained in depth with the "why", a worked example or analogy where helpful, callouts for gold-standard tips, best practice, common pitfalls and exam alerts, and a diagram whenever a process, relationship, structure or comparison is involved. Combine only trivially thin slides (title, agenda) and say so.
 4. \`## Cross-cutting concepts\` — themes spanning several slides, with comparison tables.
 5. \`## Quick-reference cheat sheet\` — tables of key terms, formulas, numbers and thresholds, procedures and acronyms.
 6. \`## Glossary\`.
