@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { EMPTY_SETTINGS, effectiveSettings, type SiteConfig } from './settings.ts';
+import { EMPTY_SETTINGS, applySiteConfig, effectiveSettings, getSiteConfig, parseGoogleClientId, type SiteConfig } from './settings.ts';
 
 const FREE = ['gemini/gemini-3.8-flash', 'gemini/gemini-3.5-flash-lite', 'openrouter/qwen/qwen3.8-27b:free'];
 
@@ -128,5 +128,41 @@ describe('showModels', () => {
     assert.equal(effectiveSettings({ ...EMPTY_SETTINGS }, site).showModels, true);
     assert.equal(effectiveSettings({ ...EMPTY_SETTINGS }, { ...site, showModels: false }).showModels, false);
     assert.equal(effectiveSettings({ ...EMPTY_SETTINGS, apiKey: 'sk-ant-x' }, { ...site, showModels: false }).showModels, false);
+  });
+});
+
+describe('googleClientId', () => {
+  const ID = '1234567890-abc_DEF123.apps.googleusercontent.com';
+
+  it('reads a Google OAuth web client id from config.json, trimmed', () => {
+    const config = applySiteConfig({ googleClientId: `  ${ID} `, agentName: 'Kiiku' });
+    assert.equal(config.googleClientId, ID);
+    assert.equal(getSiteConfig().googleClientId, ID, 'the parsed value becomes the site config');
+    assert.equal(parseGoogleClientId(ID), ID);
+  });
+
+  it('ignores anything that is not a client id, so a typo cannot reach the sign-in popup', () => {
+    const rejected: unknown[] = [
+      '',
+      'not-a-client-id',
+      'GOCSPX-this-is-a-client-secret',
+      '.apps.googleusercontent.com',
+      'https://evil.example/x.apps.googleusercontent.com',
+      '123-abc.apps.googleusercontent.com.evil.example',
+      '123 abc.apps.googleusercontent.com',
+      '123-abc.apps.googleusercontent.com/',
+      42,
+      null,
+      [ID],
+    ];
+    for (const value of rejected) {
+      assert.equal(parseGoogleClientId(value), undefined, `accepted ${JSON.stringify(value)}`);
+      assert.equal(applySiteConfig({ googleClientId: value }).googleClientId, undefined);
+    }
+  });
+
+  it('is absent when config.json has none, or when there is no config.json at all', () => {
+    assert.equal(applySiteConfig({ agentName: 'Kiiku' }).googleClientId, undefined);
+    assert.deepEqual(applySiteConfig(null), { artifact: false });
   });
 });

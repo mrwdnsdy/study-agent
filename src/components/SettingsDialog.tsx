@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
+import { CloudUpload, Eye, EyeOff, KeyRound, Loader2, X } from 'lucide-react';
 import { EFFORTS, MODEL_SUGGESTIONS, PROVIDER_LABELS, displayModel, type Effort } from '../../shared/agent/constants';
 import type { ProviderId } from '../../shared/types';
 import {
@@ -12,6 +12,19 @@ import {
   type BrowserSettings,
   type EffectiveSettings,
 } from '../browser/settings';
+import {
+  DRIVE_ROOT_FOLDER,
+  DriveError,
+  account,
+  connect,
+  disconnect,
+  isConnected,
+  isDriveAvailable,
+  isSignedIn,
+  preloadGoogleSignIn,
+  type DriveAccount,
+} from '../lib/googleDrive';
+import './export.css';
 
 interface Props {
   open: boolean;
@@ -72,6 +85,110 @@ function Intro({ resolved }: { resolved: EffectiveSettings }) {
         </p>
       );
   }
+}
+
+/** Where the visitor can review or remove the app's access to their Google account. */
+const GOOGLE_CONNECTIONS_URL = 'https://myaccount.google.com/connections';
+
+function accountLabel({ name, email }: DriveAccount): string {
+  return name && email ? `${name} (${email})` : name || email;
+}
+
+/** Connects or disconnects the visitor's own Google Drive. Shown only where Google sign-in can run. */
+function DriveSection({ agentName }: { agentName: string }) {
+  const [connected, setConnected] = useState(() => isConnected());
+  const [who, setWho] = useState<DriveAccount | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [revokeHint, setRevokeHint] = useState(false);
+
+  useEffect(() => {
+    // Have Google's script ready, so a click on Connect can open its popup straight away.
+    preloadGoogleSignIn();
+    // The account needs a live token; after a reload there is none until the next save, and
+    // opening Settings must never pop up a Google window by itself.
+    if (!isSignedIn()) return;
+    let cancelled = false;
+    account()
+      .then((found) => {
+        if (!cancelled) setWho(found);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onConnect = () => {
+    // First thing, synchronously inside the click: browsers only let the Google sign-in popup open from a click.
+    const access = connect();
+    setBusy(true);
+    setError(null);
+    setRevokeHint(false);
+    access
+      .then(async () => {
+        setConnected(true);
+        // The name is a nicety: saving works even if it cannot be read.
+        setWho(await account().catch(() => null));
+      })
+      .catch((err: unknown) => {
+        if (!(err instanceof DriveError && err.cancelled)) setError((err as Error).message);
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const onDisconnect = () => {
+    setBusy(true);
+    setError(null);
+    void disconnect()
+      .then((revoked) => {
+        setConnected(false);
+        setWho(null);
+        setRevokeHint(!revoked);
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const signedInAs = who ? accountLabel(who) : '';
+  return (
+    <div className="field drive-settings" data-testid="settings-drive">
+      <span>Google Drive</span>
+      <div className="drive-settings__row">
+        {connected ? (
+          <>
+            <span className="drive-settings__text">{signedInAs ? `Saving to Google Drive as ${signedInAs}` : 'Google Drive is connected in this browser.'}</span>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onDisconnect} disabled={busy}>
+              Disconnect
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="drive-settings__text">Save guides, quizzes, chats and diagrams to your own Google Drive.</span>
+            <button type="button" className="btn btn--sm" onClick={onConnect} disabled={busy} data-testid="settings-drive-connect">
+              {busy ? <Loader2 size={14} className="spin" /> : <CloudUpload size={14} />} Connect Google Drive
+            </button>
+          </>
+        )}
+      </div>
+      <span className="field__hint">
+        Files go into “{DRIVE_ROOT_FOLDER}”, one folder per session. {agentName} can only see the files it saves.
+      </span>
+      {revokeHint && (
+        <span className="field__hint">
+          Disconnected in this browser. To remove access completely, open{' '}
+          <a href={GOOGLE_CONNECTIONS_URL} target="_blank" rel="noreferrer">
+            your Google Account
+          </a>
+          .
+        </span>
+      )}
+      {error && (
+        <span className="drive-settings__error" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /** Browser-mode settings: the visitor's own key or proxy, layered over the site's presets (public/config.json). */
@@ -250,6 +367,8 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                 </select>
               </label>
             </div>
+
+            {isDriveAvailable() && <DriveSection agentName={preview.agentName} />}
 
             {!site.artifact && !whiteLabel && (
               <>

@@ -1,0 +1,113 @@
+/* ---------------------------------------------------------------------------
+   Export menus, the Drive fallback dialog, "Save all to Drive" and the Google
+   Drive section of Settings. Colours come from the tokens in styles.css, so
+   the light and dark themes need nothing extra here.
+--------------------------------------------------------------------------- */
+
+/* Never wider than a phone screen. */
+.menu__list {
+  max-width: calc(100vw - 32px);
+}
+
+.menu__divider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--border);
+}
+
+/* Progress text inside a small trigger stays on one short line. */
+.menu__trigger--compact .menu__busy {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chat header: the export menu and the clear-chat button share the right-hand end. */
+.chat__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Quiz results: the export menu sits at the right end of the actions, so its list opens on screen. */
+.quiz-results__actions .menu {
+  margin-left: auto;
+}
+
+@media (max-width: 600px) {
+  /* Icon only on phones; the button keeps its accessible name. */
+  .menu__trigger--compact .menu__label {
+    display: none;
+  }
+}
+
+/* ---- Drive fallback dialog ---------------------------------------------- */
+
+.modal--drive {
+  width: min(460px, 100%);
+}
+
+.drive-steps {
+  list-style: none;
+  counter-reset: drive-step;
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 0;
+}
+
+.drive-steps li {
+  counter-increment: drive-step;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.drive-steps li::before {
+  content: counter(drive-step);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* A link dressed as a button keeps the button colours, not the link colours. */
+a.btn,
+a.btn:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* ---- Save all to Drive -------------------------------------------------- */
+
+.save-all__progress {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Settings: Google Drive --------------------------------------------- */
+
+.drive-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.drive-settings__text {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.drive-settings__error {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--bad);
+}

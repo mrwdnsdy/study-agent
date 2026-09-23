@@ -70,6 +70,11 @@ export interface SiteConfig {
   /** Where the artifact version of the app lives (runs on the visitor's own account); linked from the page. */
   artifactUrl?: string;
   artifactLabel?: string;
+  /**
+   * OAuth client id (type "Web application") for "Save to Google Drive". Public by design: it names
+   * the app to Google and is not a secret. Read at runtime, so setting it needs no rebuild.
+   */
+  googleClientId?: string;
 }
 
 export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'artifact' | 'none';
@@ -100,6 +105,18 @@ let siteConfig: SiteConfig = {};
 
 function cleanString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/** A Google OAuth client id, e.g. "1234-abc.apps.googleusercontent.com". */
+const GOOGLE_CLIENT_ID = /^[\w-]+\.apps\.googleusercontent\.com$/;
+
+/**
+ * The value as a Google OAuth client id, or undefined when it is anything else. A typo would
+ * otherwise only surface as an error inside Google's sign-in popup.
+ */
+export function parseGoogleClientId(value: unknown): string | undefined {
+  const id = cleanString(value);
+  return GOOGLE_CLIENT_ID.test(id) ? id : undefined;
 }
 
 function cleanChain(value: unknown): string | string[] | undefined {
@@ -153,7 +170,18 @@ function parseSiteConfig(raw: Record<string, unknown>): SiteConfig {
     showModels: raw.showModels === false ? false : undefined,
     artifactUrl: /^https:\/\//i.test(cleanString(raw.artifactUrl)) ? cleanString(raw.artifactUrl) : undefined,
     artifactLabel: cleanString(raw.artifactLabel) || undefined,
+    googleClientId: parseGoogleClientId(raw.googleClientId),
   };
+}
+
+/**
+ * Installs a raw config object (public/config.json, or the one baked into the build) as the
+ * site defaults. Split from loadSiteConfig so the parsing can run without a network.
+ */
+export function applySiteConfig(raw: Record<string, unknown> | null): SiteConfig {
+  siteConfig = raw ? parseSiteConfig(raw) : {};
+  siteConfig.artifact = isArtifactHost();
+  return siteConfig;
 }
 
 /**
@@ -171,8 +199,7 @@ export async function loadSiteConfig(): Promise<SiteConfig> {
       const response = await fetch(`${import.meta.env.BASE_URL}config.json`, { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (response.ok) raw = (await response.json()) as Record<string, unknown>;
     }
-    siteConfig = raw ? parseSiteConfig(raw) : {};
-    siteConfig.artifact = isArtifactHost();
+    applySiteConfig(raw);
     if (siteConfig.proxyUrl) siteConfig.providers = await fetchProviders(siteConfig.proxyUrl);
   } catch {
     siteConfig = { artifact: isArtifactHost() };
