@@ -6,7 +6,7 @@ An AI study companion powered by **Claude Opus**. Upload your lecture slides, no
 - **Chat with Kiiku, your study agent**, who has read all of your materials. Ask it to explain slide 12, compare two concepts, or "add a worked example to the TCP section". It edits the study guide in place, rewrites it on request, and can start a quiz straight from the conversation.
 - **Run interactive quizzes**: multiple choice, true/false and short-answer questions generated from your materials, one at a time, with a hint, a source reference (e.g. "Slide 14"), and **immediate feedback** on every answer. Short answers are graded on meaning, not wording.
 - **Produce a post-quiz review session**: a scorecard by topic, a question-by-question breakdown of what went wrong and why, the misconceptions behind the mistakes, a targeted revision plan, and retry prompts. From there you can quiz yourself on your weak areas or discuss the mistakes in chat.
-- **Export** the guide (and reviews) as a **Word document** (diagrams included) that opens in Google Docs, as a printable page (save as PDF) or as a self-contained HTML file. With a Google OAuth client ID configured it uploads straight to your Drive as a Google Doc.
+- **Export** the guide, reviews, quizzes and the chat as a **Word document** (diagrams included), a printable page (save as PDF) or a self-contained HTML file, or **save them to your own Google Drive** as Google Docs, one item at a time or the whole session at once with the diagrams as PNG images.
 
 The published web page runs on a **free lane**: Google's Gemini 3.8 Flash writes and tutors first, with free open-weight models (Qwen 3.8 on OpenRouter, GLM Flash on Z.ai, Gemma 4 on Cloudflare Workers AI) as automatic fallbacks, and a **Claude lane** (Opus 5 for guides, Sonnet 5 for the rest, Fable 5.1 for *Maximum quality*) that visitors can switch to in Settings. A self-hosted server can use any mix of the same providers. See [Models and cost](#models-and-cost).
 
@@ -44,18 +44,56 @@ Open <http://localhost:5173>, drop your slides into the sidebar, and press **Gen
 3. **Talk to the agent** in the chat panel. Quick actions cover the common requests (explain a slide, list every formula, likely exam questions, quiz me). Ask for changes and the guide updates in place.
 4. **Quiz yourself** from the Quiz tab (choose length, difficulty, question types and an optional focus) or by asking in chat. You get feedback after every question.
 5. **Review** from the Review tab after a quiz. Use *Quiz me on weak areas* and *Discuss in chat* to keep the loop going.
-6. **Export** from the toolbar above the guide.
+6. **Export or save to Google Drive** from the toolbar above the guide, or from the menus on reviews, quizzes and the chat.
 
-## Exports and Google Docs
+## Exports
 
-- **Word (.docx)**: fully formatted (headings, callouts, tables, code, diagrams as images). Drag the file into Google Drive and open it, and Drive converts it into an editable Google Doc.
-- **Open in Google Docs** (direct upload) needs a Google OAuth *Web application* client ID:
-  1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create a project, enable the **Google Drive API**, and configure the OAuth consent screen (External, add yourself as a test user while the app is in testing).
-  2. Create an **OAuth client ID** of type *Web application* and add your app origin(s) to *Authorised JavaScript origins*, e.g. `http://localhost:5173` and your deployed URL.
-  3. Put the client ID in `.env` as `VITE_GOOGLE_CLIENT_ID=...` and restart `npm run dev` (Vite reads it at build time).
-  The app only requests the `drive.file` scope, so it can only see files it created.
-- **Printable view**: opens the guide as a styled page in a new tab; use the browser's *Print → Save as PDF*.
-- **HTML**: a single self-contained file with the diagrams inlined.
+Every export menu (the study guide, a post-quiz review, a quiz, the chat) offers:
+
+- **Word document (.docx)**: fully formatted (headings, callouts, tables, code, diagrams as images). To turn it into a Google Doc, upload it to Google Drive and open it with Google Docs.
+- **HTML file**: a single self-contained page with the diagrams inlined.
+- **Printable view / Save as PDF**: opens a styled page in a new tab; use the browser's *Print → Save as PDF*.
+- **Save to Google Drive**: a Google Doc in the visitor's own Drive (see the next section).
+
+A quiz exports with its questions, the options (the correct one marked ✓ and the student's pick marked), each answer with its result, score and feedback, the model answers, the explanations, the sources and the hints.
+
+## Save to Google Drive
+
+Every visitor signs in with **their own Google account** and saves to **their own Drive**. No server is involved: sign-in (Google Identity Services) and the uploads run in the browser, and the access token stays in memory for the hour Google issues it.
+
+- Any single item: **Export → Save to Google Drive** on the study guide, a post-quiz review, a quiz or the chat.
+- The whole session: **Save all to Drive** saves the guide, every review, every quiz, the chat and each diagram of the guide as a PNG.
+
+Everything goes into one folder per session:
+
+```text
+My Drive
+└── Kiiku Study Buddy
+    └── <session title>
+        ├── <guide title>                      Google Doc
+        ├── Review — <quiz title>              Google Doc, one per reviewed quiz
+        ├── Quiz — <quiz title>                Google Doc: questions, answers, explanations
+        ├── <session title> — chat with Kiiku  Google Doc
+        └── Diagram 1 — <caption>.png          one PNG per diagram in the guide
+```
+
+Documents are uploaded as .docx and converted to Google Docs by Drive, so diagrams, tables and headings come along. Diagrams are uploaded as PNG. Uploads use Drive's resumable protocol, so long guides with many diagrams are fine. The only scope requested is `drive.file`: the app can see and change only the files it created, nothing else in the visitor's Drive. Saving again adds new copies next to the old ones. *Settings → Google Drive* shows which account is connected and has a *Disconnect* button.
+
+Where Google sign-in cannot run, *Save to Google Drive* opens a two-step guide instead: download the Word file, then upload it in Drive. That applies inside the claude.ai artifact viewer, whose sandbox blocks third-party scripts and popups, and on a site without a client ID.
+
+### Setup (once, by the site owner)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (or pick one) and enable the **Google Drive API** (*APIs & Services → Library*).
+2. Configure the **OAuth consent screen** (*Google Auth Platform*): user type **External**, an app name and a support email, and under *Data access* the single scope `https://www.googleapis.com/auth/drive.file`. Then **publish** the app (*Audience → Publish app*, status *In production*) so that any Google account can sign in, not only listed test users. `drive.file` is a non-sensitive scope, so there is no sensitive-scope review.
+3. Create an **OAuth client ID** of type **Web application**. Under *Authorised JavaScript origins* add `https://<owner>.github.io` and `http://localhost:5173`: origins only, with no path and no trailing slash. No redirect URIs are needed.
+4. Put the client ID into `public/config.json` and push. The next Pages deploy picks it up; nothing needs rebuilding with new variables.
+
+   ```json
+   "googleClientId": "1234567890-abc123.apps.googleusercontent.com"
+   ```
+
+   The client ID is public by design: it tells Google which app is asking and is not a secret (this flow has no client secret). A value that does not end in `.apps.googleusercontent.com` is ignored.
+5. `VITE_GOOGLE_CLIENT_ID` still works as a fallback: in `.env` for local development, or as a repository variable for the Pages workflow. `config.json` wins when both are set. Server mode does not read `config.json`, so there the build-time `VITE_GOOGLE_CLIENT_ID` is the only way.
 
 ## Share it as a web page (GitHub Pages)
 
@@ -75,7 +113,7 @@ An API key must never be put into the page itself: the repository and the page a
 2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
 3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
 
-`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage), `agentName` (the persona, default `Kiiku`), `appName` (the product name used for the artifact title, default `Kiiku Study Buddy`), `artifactUrl` and `artifactLabel` (a link to the artifact version, see below, shown in the footer and in Settings) and `showModels` (set to `false` for a white-label page: the header, sidebar, Settings, status lines, chat notes and error messages then never name a provider or model, and the persona never discusses what powers it; on the server the same switch is `SHOW_MODELS=false`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…`, `cf/@cf/…` or `artifact/<tier>` (only inside a claude.ai artifact, see below); a list is a fallback chain. Visitors can still type one model for every task in Settings.
+`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage), `agentName` (the persona, default `Kiiku`), `appName` (the product name used for the artifact title, default `Kiiku Study Buddy`), `artifactUrl` and `artifactLabel` (a link to the artifact version, see below, shown in the footer and in Settings), `googleClientId` (the OAuth client ID behind *Save to Google Drive*, see [Save to Google Drive](#save-to-google-drive)) and `showModels` (set to `false` for a white-label page: the header, sidebar, Settings, status lines, chat notes and error messages then never name a provider or model, and the persona never discusses what powers it; on the server the same switch is `SHOW_MODELS=false`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…`, `cf/@cf/…` or `artifact/<tier>` (only inside a claude.ai artifact, see below); a list is a fallback chain. Visitors can still type one model for every task in Settings.
 
 ### Or let each visitor bring their own key
 
@@ -85,7 +123,7 @@ Leave `proxyUrl` empty and the page asks each visitor for an Anthropic API key i
 
 1. Fork or push this repository to GitHub. GitHub Pages needs a **public** repository on the free plan (Settings → General → Danger zone → *Change visibility*).
 2. Push to `main` (or run the *Deploy to GitHub Pages* workflow from the Actions tab). The workflow enables Pages itself; if that step fails, set Settings → Pages → *Source* to **GitHub Actions** and run it again. The site appears at `https://<owner>.github.io/<repository>/`.
-3. Optional: add a repository variable `VITE_GOOGLE_CLIENT_ID` to enable *Open in Google Docs* (the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`).
+3. Optional: set `googleClientId` in `public/config.json` to let visitors save to their own Google Drive (see [Save to Google Drive](#save-to-google-drive); the OAuth client's authorised JavaScript origin must be `https://<owner>.github.io`). A repository variable `VITE_GOOGLE_CLIENT_ID` still works as a fallback.
 
 Browser mode limits: PDFs must be under 20 MB (they are sent inline), PowerPoint decks are not rendered as images (no LibreOffice), and the Files API is not used.
 
@@ -118,7 +156,7 @@ All settings live in `.env` (see `.env.example`).
 | `DATA_DIR` | `./data` | Sessions, uploads and generated content (JSON files on disk). |
 | `MAX_UPLOAD_MB` | `100` | Per-file upload limit. |
 | `SOFFICE_PATH` | auto-detect | Path to LibreOffice's `soffice`; `off` disables slide rendering. |
-| `VITE_GOOGLE_CLIENT_ID` | – | Enables *Open in Google Docs*. |
+| `VITE_GOOGLE_CLIENT_ID` | – | Build-time Google OAuth client ID for *Save to Google Drive*. Browser mode prefers `googleClientId` in `public/config.json`; server mode only has this one. |
 | `VITE_BROWSER_MODE` | – | Build-time. `true` builds the static browser-mode bundle used for GitHub Pages (no server, key entered in Settings). |
 | `VITE_BASE` | `/` | Build-time. Public path of the client bundle, e.g. `/study-agent/` for a GitHub Pages project site. |
 
@@ -158,7 +196,7 @@ docker run -p 3001:3001 -e ANTHROPIC_API_KEY=sk-ant-... -v study-agent-data:/dat
 
 The image includes LibreOffice for slide rendering; build with `--build-arg WITH_LIBREOFFICE=false` for a smaller image.
 
-**Railway / Render / Fly.io**: deploy from the Dockerfile, attach a volume mounted at `/data`, set `ANTHROPIC_API_KEY` (and `VITE_GOOGLE_CLIENT_ID` as a build-time variable if you want Google Docs upload). Serverless platforms with short request timeouts (Netlify Functions, Vercel Hobby) are not suitable: a full study guide can stream for several minutes.
+**Railway / Render / Fly.io**: deploy from the Dockerfile, attach a volume mounted at `/data`, set `ANTHROPIC_API_KEY` (and `VITE_GOOGLE_CLIENT_ID` as a build-time variable to enable *Save to Google Drive*). Serverless platforms with short request timeouts (Netlify Functions, Vercel Hobby) are not suitable: a full study guide can stream for several minutes.
 
 **Without Docker**
 

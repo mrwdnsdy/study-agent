@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Lightbulb, Loader2, Play, Sparkles, Trash2, Trophy, XCircle } from 'lucide-react';
 import {
   QUESTION_TYPE_LABELS,
@@ -11,8 +11,10 @@ import {
   type QuizConfig,
   type Session,
 } from '../../shared/types';
+import { quizToMarkdown } from '../lib/exportMarkdown';
 import { percent, relativeTime } from '../lib/format';
 import { topicScores, type StreamState, type Toast } from '../state';
+import { ExportMenu } from './ExportMenu';
 import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 import { confirmAction } from '../lib/confirm';
@@ -104,7 +106,30 @@ function ScoreBadge({ quiz }: { quiz: Quiz }) {
   return <span className={`pill ${pct >= 70 ? 'pill--good' : pct >= 40 ? 'pill--warn' : 'pill--bad'}`}>{pct}%</span>;
 }
 
-function QuizList({ quizzes, onOpen, onDelete, busy }: { quizzes: Quiz[]; onOpen: (id: string) => void; onDelete: (id: string) => void; busy: boolean }) {
+/** Compact export of one quiz (questions, answers and explanations), saved next to the session's other files. */
+function QuizExport({ quiz, agentName, sessionTitle, onToast }: { quiz: Quiz; agentName: string; sessionTitle: string; onToast: (toast: Toast) => void }) {
+  // Rebuilt only when the quiz changes, not every time the panel re-renders during a stream.
+  const markdown = useMemo(() => quizToMarkdown(quiz, agentName), [quiz, agentName]);
+  return <ExportMenu markdown={markdown} title={`Quiz — ${quiz.title}`} subtitle={sessionTitle} folder={sessionTitle} onToast={onToast} compact />;
+}
+
+function QuizList({
+  quizzes,
+  onOpen,
+  onDelete,
+  busy,
+  agentName,
+  sessionTitle,
+  onToast,
+}: {
+  quizzes: Quiz[];
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  busy: boolean;
+  agentName: string;
+  sessionTitle: string;
+  onToast: (toast: Toast) => void;
+}) {
   if (quizzes.length === 0) return null;
   const sorted = [...quizzes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
@@ -122,6 +147,7 @@ function QuizList({ quizzes, onOpen, onDelete, busy }: { quizzes: Quiz[]; onOpen
             </button>
             <ScoreBadge quiz={quiz} />
             <span className="pill pill--muted">{quiz.status === 'completed' ? 'done' : 'in progress'}</span>
+            <QuizExport quiz={quiz} agentName={agentName} sessionTitle={sessionTitle} onToast={onToast} />
             <button type="button" className="icon-btn icon-btn--danger" title="Delete quiz" disabled={busy} onClick={() => onDelete(quiz.id)}>
               <Trash2 size={14} />
             </button>
@@ -136,6 +162,7 @@ function QuizSession({
   quiz,
   busy,
   agentName,
+  sessionTitle,
   onAnswer,
   onComplete,
   onReview,
@@ -146,6 +173,7 @@ function QuizSession({
   quiz: Quiz;
   busy: boolean;
   agentName: string;
+  sessionTitle: string;
   onAnswer: (quizId: string, body: AnswerRequest) => Promise<AnswerResponse>;
   onComplete: (quizId: string) => Promise<void>;
   onReview: (quizId: string) => void;
@@ -208,6 +236,7 @@ function QuizSession({
             <button type="button" className="btn btn--ghost" onClick={onBack}>
               <ArrowLeft size={16} /> All quizzes
             </button>
+            <QuizExport quiz={quiz} agentName={agentName} sessionTitle={sessionTitle} onToast={onToast} />
           </div>
         </div>
         {scores.length > 0 && (
@@ -498,6 +527,7 @@ export function QuizPanel({
           quiz={activeQuiz}
           busy={busy}
           agentName={agentName}
+          sessionTitle={session.title}
           onAnswer={onAnswer}
           onComplete={onComplete}
           onReview={onReview}
@@ -515,6 +545,9 @@ export function QuizPanel({
       <QuizList
         quizzes={session.quizzes}
         busy={busy}
+        agentName={agentName}
+        sessionTitle={session.title}
+        onToast={onToast}
         onOpen={(id) => onSelectQuiz(id)}
         onDelete={(id) => {
           void confirmAction('Delete this quiz and its results?').then((ok) => {
