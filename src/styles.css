@@ -1,79 +1,200 @@
 /* ---------------------------------------------------------------------------
-   Study Agent — design tokens
+   Kiiku Study Buddy — design tokens
 --------------------------------------------------------------------------- */
 :root {
+  color-scheme: light;
+
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --bg: #f5f6fa;
-  --surface: #ffffff;
-  --surface-2: #f1f3f9;
-  --surface-3: #e8ebf4;
-  --border: #e2e5ee;
-  --border-strong: #cdd2e0;
-  --text: #1a1d2b;
-  --text-2: #4b5168;
-  --muted: #7a809a;
+  --bg: #F7F2E8;
+  --surface: #FFFDF9;
+  --surface-2: #F3EDE0;
+  --surface-3: #EAE2D2;
+  --border: #E6DECD;
+  --border-strong: #CFC4AE;
+  --text: #14343B;
+  --text-2: #3E5A60;
+  --text-3: #627679;
+  --muted: #56696E;
 
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-soft: #e0e7ff;
-  --primary-text: #312e81;
+  --primary: #E9A824;
+  --primary-hover: #D9961A;
+  --primary-edge: #B07A10;
+  --primary-soft: #FBEFD0;
+  --primary-line: #F1D28A;
+  --primary-text: #7A4E06;
+  --on-primary: #14343B;
 
-  --good: #16a34a;
-  --good-soft: #dcfce7;
-  --good-text: #14532d;
-  --warn: #d97706;
-  --warn-soft: #fef3c7;
-  --warn-text: #78350f;
-  --bad: #dc2626;
-  --bad-soft: #fee2e2;
-  --bad-text: #7f1d1d;
-  --info-soft: #dbeafe;
-  --info-text: #1e3a8a;
-  --purple-soft: #ede9fe;
-  --purple-text: #4c1d95;
-  --teal-soft: #ccfbf1;
-  --teal-text: #134e4a;
+  --link: #1F6F78;
+  --link-hover: #175A61;
+  --focus: #1F6F78;
+  --focus-ring: rgba(31, 111, 120, 0.35);
 
-  --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 8px 24px -12px rgba(20, 24, 40, 0.18);
-  --radius: 12px;
-  --radius-sm: 8px;
+  --good: #47712A;
+  --good-soft: #E6EFD6;
+  --good-text: #2E4B14;
+  --warn: #A8521A;
+  --warn-soft: #FBE4CF;
+  --warn-text: #6E3510;
+  --bad: #C63D3D;
+  --bad-soft: #F9DEDA;
+  --bad-text: #7A1F1F;
+  --info: #3C7A8C;
+  --info-soft: #DCE9EE;
+  --info-text: #14484E;
+  --purple: #7E5FA8;
+  --purple-soft: #E9E2F2;
+  --purple-text: #4A3570;
+  --teal: #1F6F78;
+  --teal-soft: #D5EDE4;
+  --teal-text: #174D45;
+
+  --tint: rgba(20, 52, 59, 0.08);
+  --overlay: rgba(20, 52, 59, 0.45);
+  --diagram-bg: #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(64, 44, 10, 0.1);
+  --shadow: 0 1px 2px rgba(64, 44, 10, 0.06), 0 10px 28px -14px rgba(64, 44, 10, 0.22);
+  --shadow-lg: 0 24px 60px rgba(40, 28, 6, 0.28);
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+
+  /* Kiiku mark colours: resolve per theme through the tokens above. */
+  --kiiku-petal: var(--primary);
+  --kiiku-core: var(--text);
 
   --sidebar-w: 300px;
   --chat-w: 400px;
   --topbar-h: 56px;
 }
 
+/* Dark palette. It is written twice because CSS cannot share a declaration
+   list between the OS preference (below) and the explicit data-theme toggle
+   (further down) — keep the two dark blocks identical (guarded by
+   src/styles.test.ts). */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1117;
-    --surface: #171a23;
-    --surface-2: #1e2230;
-    --surface-3: #262b3b;
-    --border: #2a2f40;
-    --border-strong: #3a4054;
-    --text: #e8eaf2;
-    --text-2: #b7bccd;
-    --muted: #8a90a6;
-    --primary: #818cf8;
-    --primary-hover: #a5b4fc;
-    --primary-soft: #2b2f5a;
-    --primary-text: #c7d2fe;
-    --good-soft: #14351f;
-    --good-text: #bbf7d0;
-    --warn-soft: #3a2a0b;
-    --warn-text: #fde68a;
-    --bad-soft: #3d1414;
-    --bad-text: #fecaca;
-    --info-soft: #172554;
-    --info-text: #bfdbfe;
-    --purple-soft: #2e1065;
-    --purple-text: #ddd6fe;
-    --teal-soft: #0f3b36;
-    --teal-text: #99f6e4;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0F2126;
+    --surface: #16292F;
+    --surface-2: #1D343A;
+    --surface-3: #264046;
+    --border: #2B444B;
+    --border-strong: #3C585F;
+    --text: #F3ECDD;
+    --text-2: #C9C1B0;
+    --text-3: #7F8F92;
+    --muted: #96A3A5;
+
+    --primary: #F2B441;
+    --primary-hover: #F7C35E;
+    --primary-edge: #F2B441;
+    --primary-soft: #3B3320;
+    --primary-line: #8A6420;
+    --primary-text: #F6D488;
+    --on-primary: #14343B;
+
+    --link: #7CC7CE;
+    --link-hover: #9ADCE2;
+    --focus: #7CC7CE;
+    --focus-ring: rgba(124, 199, 206, 0.4);
+
+    --good: #9CC86A;
+    --good-soft: #223A1E;
+    --good-text: #C9E6A6;
+    --warn: #E4925A;
+    --warn-soft: #3F2A17;
+    --warn-text: #F4C79C;
+    --bad: #E8746B;
+    --bad-soft: #43201E;
+    --bad-text: #F5B8B2;
+    --info: #7FB6C4;
+    --info-soft: #1B3D44;
+    --info-text: #A9DCE2;
+    --purple: #B79BE0;
+    --purple-soft: #32294A;
+    --purple-text: #CFC2EA;
+    --teal: #5FB3BA;
+    --teal-soft: #173B36;
+    --teal-text: #9EDCCB;
+
+    --tint: rgba(243, 236, 221, 0.12);
+    --overlay: rgba(5, 18, 22, 0.6);
+    --diagram-bg: #ffffff;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    --kiiku-petal: var(--primary);
+    --kiiku-core: var(--text);
   }
+}
+
+/* Explicit dark toggle — same palette as the media block above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0F2126;
+  --surface: #16292F;
+  --surface-2: #1D343A;
+  --surface-3: #264046;
+  --border: #2B444B;
+  --border-strong: #3C585F;
+  --text: #F3ECDD;
+  --text-2: #C9C1B0;
+  --text-3: #7F8F92;
+  --muted: #96A3A5;
+
+  --primary: #F2B441;
+  --primary-hover: #F7C35E;
+  --primary-edge: #F2B441;
+  --primary-soft: #3B3320;
+  --primary-line: #8A6420;
+  --primary-text: #F6D488;
+  --on-primary: #14343B;
+
+  --link: #7CC7CE;
+  --link-hover: #9ADCE2;
+  --focus: #7CC7CE;
+  --focus-ring: rgba(124, 199, 206, 0.4);
+
+  --good: #9CC86A;
+  --good-soft: #223A1E;
+  --good-text: #C9E6A6;
+  --warn: #E4925A;
+  --warn-soft: #3F2A17;
+  --warn-text: #F4C79C;
+  --bad: #E8746B;
+  --bad-soft: #43201E;
+  --bad-text: #F5B8B2;
+  --info: #7FB6C4;
+  --info-soft: #1B3D44;
+  --info-text: #A9DCE2;
+  --purple: #B79BE0;
+  --purple-soft: #32294A;
+  --purple-text: #CFC2EA;
+  --teal: #5FB3BA;
+  --teal-soft: #173B36;
+  --teal-text: #9EDCCB;
+
+  --tint: rgba(243, 236, 221, 0.12);
+  --overlay: rgba(5, 18, 22, 0.6);
+  --diagram-bg: #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+  --kiiku-petal: var(--primary);
+  --kiiku-core: var(--text);
 }
 
 *,
@@ -116,7 +237,19 @@ button:disabled {
 }
 
 a {
-  color: var(--primary);
+  color: var(--link);
+}
+
+a:hover {
+  color: var(--link-hover);
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 code,
@@ -170,7 +303,7 @@ pre {
 }
 
 .banner code {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--tint);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -201,20 +334,34 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.01em;
 }
 
-.brand__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
+.brand__mark {
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.brand__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.brand__eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .topbar__title {
@@ -238,7 +385,7 @@ pre {
   gap: 4px;
   background: var(--surface-2);
   padding: 4px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
 }
 
 .tab {
@@ -247,10 +394,11 @@ pre {
   gap: 6px;
   padding: 6px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(var(--radius-sm) - 3px);
   background: transparent;
   color: var(--text-2);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-weight: 600;
   position: relative;
 }
 
@@ -260,8 +408,19 @@ pre {
 
 .tab.is-active {
   background: var(--surface);
-  color: var(--primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  color: var(--link);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--link);
 }
 
 .tab--mobile {
@@ -345,13 +504,14 @@ pre {
 
 .btn--primary {
   background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
+  border: 1px solid var(--primary-edge);
+  color: var(--on-primary);
+  font-weight: 600;
 }
 
 .btn--primary:hover:not(:disabled) {
   background: var(--primary-hover);
-  border-color: var(--primary-hover);
+  border-color: var(--primary-edge);
 }
 
 .btn--ghost {
@@ -384,7 +544,7 @@ pre {
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--muted);
 }
@@ -403,7 +563,7 @@ pre {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--primary);
+  color: var(--link);
   text-decoration: underline;
 }
 
@@ -458,8 +618,9 @@ pre {
 }
 
 .chip:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--link);
+  color: var(--link);
+  background: var(--surface);
 }
 
 .card {
@@ -479,6 +640,8 @@ pre {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 18px;
 }
 
@@ -527,8 +690,9 @@ input[type='password']:focus,
 input[type='url']:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid var(--primary-soft);
-  border-color: var(--primary);
+  border-color: var(--focus);
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0;
 }
 
 textarea {
@@ -550,7 +714,7 @@ input[type='range'] {
 }
 
 .checkbox input {
-  accent-color: var(--primary);
+  accent-color: var(--link);
   width: 16px;
   height: 16px;
 }
@@ -738,6 +902,7 @@ fieldset legend {
 
 .sidebar__heading h2 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -929,6 +1094,7 @@ fieldset legend {
 }
 
 .guide__info strong {
+  font-family: var(--font-display);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -944,7 +1110,7 @@ fieldset legend {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--primary);
+  color: var(--link);
 }
 
 .guide__regenerate {
@@ -972,6 +1138,8 @@ fieldset legend {
 }
 
 .toc__title {
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -988,7 +1156,7 @@ fieldset legend {
 .toc__item a {
   display: block;
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: var(--text-2);
   text-decoration: none;
   white-space: nowrap;
@@ -1033,7 +1201,7 @@ fieldset legend {
   padding: 36px 40px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
 
@@ -1043,25 +1211,28 @@ fieldset legend {
 }
 
 .hero__icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--primary-soft);
-  color: var(--primary);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .hero h1 {
   margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 26px;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .hero h2 {
   margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 
 .prompt-form {
@@ -1122,20 +1293,26 @@ fieldset legend {
 }
 
 .md h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
   font-size: 30px;
   margin: 0 0 16px;
-  color: var(--primary-text);
+  color: var(--text);
 }
 
 .md h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 22px;
   margin: 40px 0 12px;
   padding-bottom: 6px;
-  border-bottom: 2px solid var(--primary-soft);
-  color: var(--primary-text);
+  border-bottom: 2px solid var(--primary-line);
+  color: var(--text);
 }
 
 .md h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 17.5px;
   margin: 28px 0 8px;
 }
@@ -1165,7 +1342,7 @@ fieldset legend {
 }
 
 .md strong {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .md code {
@@ -1247,24 +1424,24 @@ fieldset legend {
 
 .callout--practice {
   background: var(--teal-soft) !important;
-  border-left-color: #0d9488 !important;
+  border-left-color: var(--teal) !important;
   color: var(--teal-text) !important;
 }
 
 .callout--memory {
   background: var(--purple-soft) !important;
-  border-left-color: #7c3aed !important;
+  border-left-color: var(--purple) !important;
   color: var(--purple-text) !important;
 }
 
 .callout--note {
   background: var(--info-soft) !important;
-  border-left-color: #2563eb !important;
+  border-left-color: var(--info) !important;
   color: var(--info-text) !important;
 }
 
 .callout code {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--tint);
 }
 
 .table-wrap {
@@ -1318,7 +1495,7 @@ fieldset legend {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--diagram-bg);
   overflow-x: auto;
 }
 
@@ -1387,14 +1564,14 @@ fieldset legend {
 
 .msg {
   display: grid;
-  grid-template-columns: 26px 1fr;
+  grid-template-columns: 30px 1fr;
   gap: 10px;
   align-items: flex-start;
 }
 
 .msg__avatar {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -1405,14 +1582,14 @@ fieldset legend {
 }
 
 .msg--assistant .msg__avatar {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: transparent;
+  color: var(--text);
 }
 
 .msg__body {
   min-width: 0;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--surface-2);
   font-size: 14px;
 }
@@ -1459,7 +1636,7 @@ fieldset legend {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--primary);
+  color: var(--link);
   font-weight: 500;
   font-size: 13px;
   margin-bottom: 6px;
@@ -1507,7 +1684,7 @@ fieldset legend {
   min-height: 42px;
   max-height: 180px;
   resize: none;
-  border-radius: 12px;
+  border-radius: var(--radius);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1534,10 +1711,11 @@ fieldset legend {
   display: flex;
   align-items: center;
   gap: 14px;
-  color: var(--primary);
+  color: var(--link);
 }
 
 .quiz-list h3 {
+  font-family: var(--font-display);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1655,7 +1833,7 @@ fieldset legend {
 
 .option.is-selected .option__letter {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
 }
 
 .answer-input {
@@ -1755,12 +1933,12 @@ fieldset legend {
   display: flex;
   align-items: center;
   gap: 14px;
-  color: var(--primary);
 }
 
 .quiz-results__pct {
+  font-family: var(--font-display);
   font-size: 34px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   color: var(--text);
 }
@@ -1881,6 +2059,61 @@ fieldset legend {
 .review__cta .topic-pills {
   justify-content: center;
   margin: 16px 0 22px;
+}
+
+/* ---------------------------------------------------------------------------
+   Kiiku marks
+--------------------------------------------------------------------------- */
+.chat__header strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.kiiku-buddy {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.kiiku-buddy__petals {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.kiiku-buddy--thinking .kiiku-buddy__petals {
+  animation: kiiku-spin 7s linear infinite;
+}
+
+.kiiku-buddy--cheer {
+  animation: kiiku-bob 1.1s ease-in-out 3;
+}
+
+@keyframes kiiku-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes kiiku-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kiiku-buddy--thinking .kiiku-buddy__petals,
+  .kiiku-buddy--cheer {
+    animation: none;
+  }
+}
+
+.chat__empty .kiiku-buddy,
+.hero .kiiku-buddy {
+  display: block;
+  margin: 0 auto;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2037,7 +2270,7 @@ fieldset legend {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--overlay);
   backdrop-filter: blur(2px);
 }
 
@@ -2049,7 +2282,7 @@ fieldset legend {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
 }
 
 .modal__header,
@@ -2070,6 +2303,8 @@ fieldset legend {
   align-items: center;
   gap: 8px;
   margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
   font-size: 16px;
 }
 
@@ -2114,7 +2349,7 @@ fieldset legend {
 .field__hint {
   font-weight: 400;
   font-size: 12px;
-  color: var(--text-3, var(--text-2));
+  color: var(--text-3);
 }
 
 .field__hint code {
@@ -2159,7 +2394,7 @@ fieldset legend {
 
 .lane input {
   margin-top: 3px;
-  accent-color: var(--primary);
+  accent-color: var(--link);
 }
 
 .lane__body {

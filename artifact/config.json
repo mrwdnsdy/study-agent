@@ -16,5 +16,6 @@
   "effort": "high",
   "notice": "Your study sessions stay in this browser. Each request runs on the account you are signed in with here, so it counts against that plan.",
   "agentName": "Kiiku",
+  "appName": "Kiiku Study Buddy",
   "showModels": false
 }

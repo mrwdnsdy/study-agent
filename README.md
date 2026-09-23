@@ -1,6 +1,6 @@
-# Study Agent
+# Kiiku Study Buddy
 
-An AI study companion powered by **Claude Opus**. Upload your lecture slides, notes and readings, and Study Agent will:
+An AI study companion powered by **Claude Opus**. Upload your lecture slides, notes and readings, and Kiiku will:
 
 - **Write a highly technical study guide** that walks through every slide in order: concepts explained in depth, best practices, gold-standard tips, common pitfalls, exam alerts, comparison tables, a cheat sheet, a glossary and self-check questions. Diagrams are drawn with Mermaid and rendered in colour, so visual learners get flowcharts, mind maps, sequence diagrams and timelines instead of walls of text. The document streams in live as it is written.
 - **Chat with Kiiku, your study agent**, who has read all of your materials. Ask it to explain slide 12, compare two concepts, or "add a worked example to the TCP section". It edits the study guide in place, rewrites it on request, and can start a quiz straight from the conversation.
@@ -59,7 +59,7 @@ Open <http://localhost:5173>, drop your slides into the sidebar, and press **Gen
 
 ## Share it as a web page (GitHub Pages)
 
-The repository publishes itself to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`), so anyone with the link can use Study Agent without installing anything: **https://mrwdnsdy.github.io/study-agent/**
+The repository publishes itself to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`), so anyone with the link can use Kiiku Study Buddy without installing anything: **https://mrwdnsdy.github.io/study-agent/**
 
 The page is a static build in **browser mode**:
 
@@ -75,7 +75,7 @@ An API key must never be put into the page itself: the repository and the page a
 2. Put the Worker URL into `public/config.json` as `proxyUrl` and push. The next Pages deploy picks it up; visitors then see no key prompt at all.
 3. Because everyone with the link spends that key's credit, keep the guard rails on: the Worker only accepts requests from the page's origin (`ALLOWED_ORIGINS`), caps each visitor at 40 requests per minute, and forwards nothing but the Messages endpoints. Set a **monthly spend limit** for the key in the Anthropic Console (Settings → Limits), ideally on a dedicated workspace, and rotate the key from the Cloudflare dashboard if usage looks wrong. An optional `ACCESS_CODE` secret adds a passphrase, but note that a code written into `config.json` is public too; it only helps when you hand it out separately.
 
-`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage), `agentName` (the persona, default `Kiiku`) `artifactUrl` and `artifactLabel` (a link to the artifact version, see below, shown in the footer and in Settings) and `showModels` (set to `false` for a white-label page: the header, sidebar, Settings, status lines, chat notes and error messages then never name a provider or model, and the persona never discusses what powers it; on the server the same switch is `SHOW_MODELS=false`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…`, `cf/@cf/…` or `artifact/<tier>` (only inside a claude.ai artifact, see below); a list is a fallback chain. Visitors can still type one model for every task in Settings.
+`config.json` fields: `proxyUrl`, `accessCode`, `lanes` (named sets of model chains the visitor can switch between, each with `label`, `model` or per-task `models`, and `escalationModel`), `defaultLane`, `effort` (`low` … `max`), `notice` (a sentence shown in Settings, e.g. who is paying for usage), `agentName` (the persona, default `Kiiku`), `appName` (the product name used for the artifact title, default `Kiiku Study Buddy`), `artifactUrl` and `artifactLabel` (a link to the artifact version, see below, shown in the footer and in Settings) and `showModels` (set to `false` for a white-label page: the header, sidebar, Settings, status lines, chat notes and error messages then never name a provider or model, and the persona never discusses what powers it; on the server the same switch is `SHOW_MODELS=false`). A model reference is `claude-…`, `gemini/…`, `openrouter/…`, `zai/…`, `cf/@cf/…` or `artifact/<tier>` (only inside a claude.ai artifact, see below); a list is a fallback chain. Visitors can still type one model for every task in Settings.
 
 ### Or let each visitor bring their own key
 

@@ -218,20 +218,20 @@ test('markdownToDocx produces a valid package with every construct rendered', as
   assert.ok(document.includes('<w:tbl>'), 'table element');
   assert.ok(document.includes('Hydrolysis'), 'table cell text');
   assert.ok(document.includes('Fast &amp; irreversible'), 'table cell text is XML-escaped');
-  assert.ok(/w:fill="e0e7ff"/i.test(document), 'header row shading');
+  assert.ok(/w:fill="FBEFD0"/i.test(document), 'header row shading');
   // Callouts, quotes, rule.
   assert.ok(document.includes('Always cite the primary source when reporting Km values.'), 'callout text');
-  assert.ok(/w:fill="f0fdf4"/i.test(document), 'tip callout background');
-  assert.ok(/<w:left [^>]*w:color="16a34a"/i.test(document), 'tip callout coloured left border');
-  assert.ok(/<w:left [^>]*w:color="d97706"/i.test(document), 'pitfall callout coloured left border');
-  assert.ok(/<w:left [^>]*w:color="e11d48"/i.test(document), 'exam callout coloured left border');
-  assert.ok(/w:fill="f8fafc"/i.test(document), 'note callout background');
+  assert.ok(/w:fill="EEF4E3"/i.test(document), 'tip callout background');
+  assert.ok(/<w:left [^>]*w:color="47712A"/i.test(document), 'tip callout coloured left border');
+  assert.ok(/<w:left [^>]*w:color="A8521A"/i.test(document), 'pitfall callout coloured left border');
+  assert.ok(/<w:left [^>]*w:color="B93535"/i.test(document), 'exam callout coloured left border');
+  assert.ok(/w:fill="F3F1EC"/i.test(document), 'note callout background');
   assert.ok(document.includes('Warning without a colon is still a pitfall.'), 'prefix-only callout text');
   assert.ok(document.includes('Just an ordinary quotation'), 'plain quote text');
   // Code.
   assert.ok(document.includes('def hello(name):'), 'code block text');
   assert.ok(document.includes('    return f&quot;Hello, {name}&quot;'), 'code block preserves indentation');
-  assert.ok(/w:fill="f1f5f9"/i.test(document), 'code block shading');
+  assert.ok(/w:fill="F3EDE0"/i.test(document), 'code block shading');
   assert.ok(/w:ascii="Consolas"/.test(document), 'code font');
   assert.ok(document.includes('v = Vmax[S] / (Km + [S])'), 'inline code text');
   // Lists.
@@ -286,7 +286,7 @@ test('markdownToDocx produces a valid package with every construct rendered', as
   assert.ok(rels.includes('relationships/footer'), 'footer relationship');
 
   const styles = await read('word/styles.xml');
-  assert.ok(/w:color w:val="3730a3"/i.test(styles), 'H1 colour in styles');
+  assert.ok(/w:color w:val="14343B"/i.test(styles), 'H1 colour in styles');
   assert.ok(/w:ascii="Calibri"/.test(styles), 'body font');
   assert.ok(styles.includes('w:styleId="CodeBlock"'), 'custom code block style');
 });
@@ -407,7 +407,7 @@ test('classifyCallout recognises emoji, labels and prefixes', () => {
   assert.equal(classifyCallout('NOTE that this is important')?.kind, 'note');
   assert.equal(classifyCallout('Warning! Danger ahead')?.kind, 'pitfall');
   assert.equal(classifyCallout('Best practice — do this')?.kind, 'practice');
-  assert.equal(classifyCallout('Tip: x')?.color, '#16a34a');
+  assert.equal(classifyCallout('Tip: x')?.color, '#47712A');
   assert.equal(classifyCallout('Just a quote'), null);
   assert.equal(classifyCallout('Albert Einstein: imagination matters'), null);
   assert.equal(classifyCallout(''), null);

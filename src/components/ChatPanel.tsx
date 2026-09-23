@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Bot, Loader2, Send, Square, Trash2, User, Wrench } from 'lucide-react';
+import { Send, Square, Trash2, User, Wrench } from 'lucide-react';
 import type { ChatMessage, Session } from '../../shared/types';
 import type { StreamState } from '../state';
+import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 import { confirmAction } from '../lib/confirm';
 
@@ -60,7 +61,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   return (
     <div className={`msg msg--${message.role}${message.kind && message.kind !== 'chat' ? ` msg--${message.kind}` : ''}`}>
-      <div className="msg__avatar">{isUser ? <User size={14} /> : <Bot size={14} />}</div>
+      <div className="msg__avatar">{isUser ? <User size={16} /> : <KiikuBuddy size={30} />}</div>
       <div className="msg__body">
         {message.thinking && (
           <details className="thinking thinking--compact">
@@ -150,7 +151,7 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
       >
         {session.messages.length === 0 && !liveKind && (
           <div className="chat__empty">
-            <Bot size={28} />
+            <KiikuBuddy size={64} />
             <p>
               Hi, I&apos;m {agentName}! I have your materials{session.materials.length ? '' : ' (none uploaded yet)'}. Ask me to explain a slide, build the study guide,
               or quiz you. I give feedback on every answer.
@@ -163,12 +164,12 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
         {liveKind && (
           <div className="msg msg--assistant msg--live">
             <div className="msg__avatar">
-              <Bot size={14} />
+              <KiikuBuddy size={30} mood="thinking" title="Thinking" />
             </div>
             <div className="msg__body">
               {(stream.status || !stream.text) && (
                 <div className="msg__status">
-                  <Loader2 size={14} className="spin" /> {stream.status || 'Thinking…'}
+                  {stream.status || 'Thinking…'}
                 </div>
               )}
               {stream.thinking && (

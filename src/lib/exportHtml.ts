@@ -16,6 +16,7 @@ import {
   stripHtmlTags,
   type CalloutKind,
 } from './markdownAst';
+import { APP_NAME } from '../../shared/agent/constants';
 
 export interface HtmlExportOptions {
   title: string;
@@ -263,56 +264,56 @@ function calloutCss(): string {
 }
 
 const BASE_CSS = `
-:root { color-scheme: light; --ink: #1f2937; --muted: #64748b; --indigo-900: #3730a3; --indigo-700: #4338ca; --slate-800: #1e293b; --rule: #e2e8f0; --code-bg: #f1f5f9; --table-head: #e0e7ff; --link: #2563eb; }
+:root { color-scheme: light; --ink: #14343B; --muted: #56696E; --heading: #14343B; --heading-2: #1F6F78; --slate-800: #2A4A50; --rule: #E6DECD; --code-bg: #F3EDE0; --table-head: #FBEFD0; --link: #1F6F78; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: #f1f5f9; color: var(--ink); font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; overflow-wrap: break-word; }
+body { margin: 0; background: #F7F2E8; color: var(--ink); font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; overflow-wrap: break-word; }
 .doc { max-width: 54rem; margin: 0 auto; padding: 2.5rem 16px 4rem; background: #fff; }
 @media (min-width: 60rem) {
   body { padding: 2rem 0; }
-  .doc { padding: 3.5rem 4rem 5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 12px 32px -12px rgba(15, 23, 42, .15); }
+  .doc { padding: 3.5rem 4rem 5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(64, 44, 10, .08), 0 12px 32px -12px rgba(64, 44, 10, .18); }
 }
-.doc-header { border-bottom: 3px solid var(--indigo-900); margin-bottom: 2rem; padding-bottom: 1.25rem; }
-.doc-title { font-size: 2.25rem; line-height: 1.15; margin: 0 0 .5rem; color: var(--indigo-900); letter-spacing: -.01em; border: 0; padding: 0; }
+.doc-header { border-bottom: 3px solid #E9A824; margin-bottom: 2rem; padding-bottom: 1.25rem; }
+.doc-title { font-size: 2.25rem; line-height: 1.15; margin: 0 0 .5rem; color: var(--heading); letter-spacing: -.01em; border: 0; padding: 0; }
 .doc-subtitle { font-size: 1.15rem; color: var(--muted); margin: 0 0 .5rem; }
 .doc-meta { font-size: .9rem; color: var(--muted); margin: 0; }
 h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 2.2em 0 .6em; font-weight: 700; scroll-margin-top: 1rem; }
-h1 { font-size: 1.9rem; color: var(--indigo-900); border-bottom: 2px solid #c7d2fe; padding-bottom: .3em; }
-h2 { font-size: 1.45rem; color: var(--indigo-700); }
+h1 { font-size: 1.9rem; color: var(--heading); border-bottom: 2px solid #F1D28A; padding-bottom: .3em; }
+h2 { font-size: 1.45rem; color: var(--heading-2); }
 h3 { font-size: 1.15rem; color: var(--slate-800); }
-h4 { font-size: 1.02rem; color: #334155; font-style: italic; }
-h5, h6 { font-size: 1rem; color: #334155; }
+h4 { font-size: 1.02rem; color: #2A4A50; font-style: italic; }
+h5, h6 { font-size: 1rem; color: #2A4A50; }
 h1:first-child, h2:first-child, h3:first-child { margin-top: 0; }
 p { margin: 0 0 1em; }
 a { color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
-strong { font-weight: 700; color: #111827; }
+strong { font-weight: 700; color: #14343B; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-code { font-size: .875em; background: #eef2ff; color: #3730a3; padding: .12em .35em; border-radius: 4px; }
+code { font-size: .875em; background: #FBEFD0; color: #7A4E06; padding: .12em .35em; border-radius: 4px; }
 pre.code { position: relative; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem 1rem; margin: 0 0 1.25em; overflow-x: auto; font-size: .85rem; line-height: 1.55; white-space: pre; }
-pre.code code { background: none; color: #0f172a; padding: 0; font-size: inherit; }
+pre.code code { background: none; color: #14343B; padding: 0; font-size: inherit; }
 pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: .35rem; right: .6rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 ul, ol { margin: 0 0 1em; padding-left: 1.6em; }
 li { margin: .25em 0; }
 li > ul, li > ol { margin: .25em 0 0; }
 li.task { list-style: none; margin-left: -1.4em; }
 li.task input { margin: 0 .4em 0 0; vertical-align: middle; }
-hr { border: 0; border-top: 1px solid #cbd5e1; margin: 2rem 0; }
-blockquote { margin: 0 0 1.25em; padding: .25em 1.1em; border-left: 4px solid #cbd5e1; color: #475569; font-style: italic; }
+hr { border: 0; border-top: 1px solid #CFC4AE; margin: 2rem 0; }
+blockquote { margin: 0 0 1.25em; padding: .25em 1.1em; border-left: 4px solid #CFC4AE; color: #3E5A60; font-style: italic; }
 blockquote > :last-child { margin-bottom: 0; }
-.callout { margin: 0 0 1.25em; padding: .85rem 1.1rem; border-left: 4px solid var(--callout, #64748b); background: var(--callout-bg, #f8fafc); border-radius: 0 8px 8px 0; }
+.callout { margin: 0 0 1.25em; padding: .85rem 1.1rem; border-left: 4px solid var(--callout, #56696E); background: var(--callout-bg, #F7F2E8); border-radius: 0 8px 8px 0; }
 .callout-body > :last-child { margin-bottom: 0; }
 .callout-label { color: var(--callout, inherit); }
 .table-wrap { overflow-x: auto; margin: 0 0 1.25em; }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
-th, td { border: 1px solid #cbd5e1; padding: .5em .75em; vertical-align: top; text-align: left; }
-th { background: var(--table-head); color: #1e1b4b; font-weight: 700; }
-tbody tr:nth-child(even) { background: #f8fafc; }
+th, td { border: 1px solid #CFC4AE; padding: .5em .75em; vertical-align: top; text-align: left; }
+th { background: var(--table-head); color: #14343B; font-weight: 700; }
+tbody tr:nth-child(even) { background: #F7F2E8; }
 figure.diagram { margin: 1.5em 0; text-align: center; }
 figure.diagram svg { max-width: 100%; height: auto; }
 .figure-alt { text-align: center; }
 .image-alt { color: var(--muted); }
 .diagram-fallback { margin-bottom: .4em; color: var(--muted); }
-.footnote { font-size: .9rem; color: #475569; margin: .5em 0; }
+.footnote { font-size: .9rem; color: #3E5A60; margin: .5em 0; }
 .footnote > p { display: inline; }
 sup { line-height: 0; }
 .doc-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-size: .85rem; color: var(--muted); }
@@ -392,7 +393,7 @@ export async function markdownToStandaloneHtml(markdown: string, options: HtmlEx
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<meta name="generator" content="Study Agent">',
+    `<meta name="generator" content="${esc(APP_NAME)}">`,
     `<title>${esc(title)}</title>`,
     `<style>${BASE_CSS}${calloutCss()}\n</style>`,
     '</head>',

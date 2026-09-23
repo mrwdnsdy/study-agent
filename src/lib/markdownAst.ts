@@ -34,13 +34,13 @@ export interface CalloutStyle {
 
 /** Visual identity of each callout kind. Shared by both exporters. */
 export const CALLOUT_STYLES: Readonly<Record<CalloutKind, CalloutStyle>> = {
-  tip: { label: 'Tip', emoji: '💡', color: '#16a34a', background: '#f0fdf4' },
-  pitfall: { label: 'Common pitfall', emoji: '⚠️', color: '#d97706', background: '#fffbeb' },
-  exam: { label: 'Exam alert', emoji: '📌', color: '#e11d48', background: '#fff1f2' },
-  key: { label: 'Key concept', emoji: '🔑', color: '#4f46e5', background: '#eef2ff' },
-  practice: { label: 'Best practice', emoji: '✅', color: '#0d9488', background: '#f0fdfa' },
-  memory: { label: 'Memory aid', emoji: '🧠', color: '#9333ea', background: '#faf5ff' },
-  note: { label: 'Note', emoji: '📝', color: '#64748b', background: '#f8fafc' },
+  tip: { label: 'Tip', emoji: '💡', color: '#47712A', background: '#EEF4E3' },
+  pitfall: { label: 'Common pitfall', emoji: '⚠️', color: '#A8521A', background: '#FBF0E4' },
+  exam: { label: 'Exam alert', emoji: '📌', color: '#B93535', background: '#FBEAE8' },
+  key: { label: 'Key concept', emoji: '🔑', color: '#8A5E0A', background: '#FBF3DE' },
+  practice: { label: 'Best practice', emoji: '✅', color: '#1F6F78', background: '#E4F0F1' },
+  memory: { label: 'Memory aid', emoji: '🧠', color: '#71539C', background: '#F1ECF7' },
+  note: { label: 'Note', emoji: '📝', color: '#55696E', background: '#F3F1EC' },
 };
 
 /** Leading emoji that identify a callout kind (checked before any keyword). */

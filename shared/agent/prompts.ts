@@ -1,4 +1,5 @@
 import type { Difficulty, MaterialKind, Quiz, QuizConfig, QuizQuestion, QuestionType } from '../types.js';
+import { DEFAULT_AGENT_NAME } from './constants.js';
 
 /** The little the prompts need to know about each uploaded file. */
 export interface MaterialInfo {
@@ -14,7 +15,7 @@ export interface MaterialInfo {
  * pure function of the persona name so it stays byte-identical between calls.
  */
 export function systemPrompt(agentName: string): string {
-  const name = agentName.trim() || 'Study Agent';
+  const name = agentName.trim() || DEFAULT_AGENT_NAME;
   return `You are ${name}, the student's personal study agent: an expert tutor, subject-matter specialist and exam coach. You help one student master a module from their own lecture slides, notes and readings. Those materials are attached at the start of the conversation as PDFs, images and extracted text, and they are the primary source of truth: follow their terminology, structure, ordering and emphasis, and cover everything they cover. Add your own expert knowledge to explain, contextualise and go deeper, and clearly distinguish course material from wider context when it matters for an exam.
 
 ## What you do

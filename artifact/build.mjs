@@ -67,8 +67,8 @@ const headTags = head
   .split(/\n/)
   .map((line) => line.trim())
   .filter((line) => line && !/^<meta charset/i.test(line) && !/^<meta name="viewport"/i.test(line) && !/^<link rel="icon"/i.test(line))
-  .map((line) => line.replace(/<title>.*<\/title>/i, `<title>${config.agentName ?? 'Kiiku'}</title>`));
-const title = headTags.find((line) => /^<title>/i.test(line)) ?? `<title>${config.agentName ?? 'Kiiku'}</title>`;
+  .map((line) => line.replace(/<title>.*<\/title>/i, `<title>${config.appName ?? 'Kiiku Study Buddy'}</title>`));
+const title = headTags.find((line) => /^<title>/i.test(line)) ?? `<title>${config.appName ?? 'Kiiku Study Buddy'}</title>`;
 const fragment = [title, ...headTags.filter((line) => line !== title), body.trim()].join('\n') + '\n';
 fs.writeFileSync(path.join(outDir, 'kiiku.html'), fragment);
 

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, ListTree, Loader2, RefreshCw, Sparkles, Square } from 'lucide-react';
+import { ListTree, RefreshCw, Sparkles, Square } from 'lucide-react';
 import { DEFAULT_GUIDE_PROMPT, type GuideQuality, type Session, type TaskModels } from '../../shared/types';
 import { displayModel } from '../../shared/agent/constants';
 import { relativeTime, titleFromMarkdown, wordCount } from '../lib/format';
 import { tableOfContents } from '../lib/toc';
 import type { StreamState, Toast } from '../state';
 import { ExportMenu } from './ExportMenu';
+import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 
 interface Props {
@@ -108,7 +109,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
       <div className="guide guide--streaming">
         <div className="guide__toolbar">
           <div className="guide__status">
-            <Loader2 size={18} className="spin" />
+            <KiikuBuddy size={28} mood="thinking" />
             <div>
               <strong>Writing your study guide{stream.guideVersion ? ` (v${stream.guideVersion})` : ''}…</strong>
               <div className="muted small">
@@ -138,7 +139,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
       <div className="guide guide--empty">
         <div className="hero">
           <div className="hero__icon">
-            <BookOpen size={28} />
+            <KiikuBuddy size={48} />
           </div>
           <h1>Your study guide starts here</h1>
           <p className="muted">

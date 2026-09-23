@@ -19,6 +19,7 @@
   "effort": "high",
   "notice": "Kiiku is in testing; model access is provided by this site while it lasts.",
   "agentName": "Kiiku",
+  "appName": "Kiiku Study Buddy",
   "showModels": false,
   "artifactUrl": "https://claude.ai/artifact/V2iDGWczGYfSGJx6cRHEvi",
   "artifactLabel": "Use Kiiku with your own account"

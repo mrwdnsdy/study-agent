@@ -13,6 +13,7 @@ import {
 } from '../../shared/types';
 import { percent, relativeTime } from '../lib/format';
 import { topicScores, type StreamState, type Toast } from '../state';
+import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 import { confirmAction } from '../lib/confirm';
 
@@ -23,6 +24,7 @@ interface Props {
   session: Session;
   stream: StreamState;
   busy: boolean;
+  agentName: string;
   activeQuizId: string | null;
   onSelectQuiz: (quizId: string | null) => void;
   onCreate: (config: QuizConfig) => void;
@@ -34,7 +36,7 @@ interface Props {
   onToast: (toast: Toast) => void;
 }
 
-function QuizSetup({ onCreate, busy, hasMaterials }: { onCreate: (config: QuizConfig) => void; busy: boolean; hasMaterials: boolean }) {
+function QuizSetup({ onCreate, busy, hasMaterials, agentName }: { onCreate: (config: QuizConfig) => void; busy: boolean; hasMaterials: boolean; agentName: string }) {
   const [numQuestions, setNumQuestions] = useState(10);
   const [difficulty, setDifficulty] = useState<Difficulty>('mixed');
   const [types, setTypes] = useState<QuestionType[]>(ALL_TYPES);
@@ -54,7 +56,7 @@ function QuizSetup({ onCreate, busy, hasMaterials }: { onCreate: (config: QuizCo
       <h2>
         <Sparkles size={18} /> New quiz
       </h2>
-      <p className="muted small">The agent writes fresh questions from your materials, grades every answer and explains why.</p>
+      <p className="muted small">{agentName} writes fresh questions from your materials, grades every answer and explains why.</p>
       <div className="field-row">
         <label>
           Questions: <strong>{numQuestions}</strong>
@@ -133,6 +135,7 @@ function QuizList({ quizzes, onOpen, onDelete, busy }: { quizzes: Quiz[]; onOpen
 function QuizSession({
   quiz,
   busy,
+  agentName,
   onAnswer,
   onComplete,
   onReview,
@@ -142,6 +145,7 @@ function QuizSession({
 }: {
   quiz: Quiz;
   busy: boolean;
+  agentName: string;
   onAnswer: (quizId: string, body: AnswerRequest) => Promise<AnswerResponse>;
   onComplete: (quizId: string) => Promise<void>;
   onReview: (quizId: string) => void;
@@ -183,7 +187,7 @@ function QuizSession({
       <div className="quiz-results">
         <div className="card quiz-results__summary">
           <div className="quiz-results__score">
-            <Trophy size={28} />
+            <KiikuBuddy size={48} mood={pct >= 70 ? 'cheer' : 'happy'} />
             <div>
               <div className="quiz-results__pct">{pct}%</div>
               <div className="muted small">
@@ -383,7 +387,7 @@ function QuizSession({
             className="answer-input"
             value={text}
             rows={4}
-            placeholder="Type your answer. Explain your reasoning — the agent grades understanding, not wording."
+            placeholder={`Type your answer. Explain your reasoning — ${agentName} grades understanding, not wording.`}
             onChange={(e) => setText(e.target.value)}
             disabled={submitting}
           />
@@ -453,6 +457,7 @@ export function QuizPanel({
   session,
   stream,
   busy,
+  agentName,
   activeQuizId,
   onSelectQuiz,
   onCreate,
@@ -470,10 +475,10 @@ export function QuizPanel({
     return (
       <div className="quiz">
         <div className="card quiz-building">
-          <Loader2 size={22} className="spin" />
+          <KiikuBuddy size={28} mood="thinking" />
           <div>
             <strong>{stream.status || 'Designing your quiz…'}</strong>
-            <div className="muted small">The agent is reading your materials and writing questions with explanations.</div>
+            <div className="muted small">{agentName} is reading your materials and writing questions with explanations.</div>
           </div>
         </div>
         {stream.thinking && (
@@ -492,6 +497,7 @@ export function QuizPanel({
         <QuizSession
           quiz={activeQuiz}
           busy={busy}
+          agentName={agentName}
           onAnswer={onAnswer}
           onComplete={onComplete}
           onReview={onReview}
@@ -505,7 +511,7 @@ export function QuizPanel({
 
   return (
     <div className="quiz">
-      <QuizSetup onCreate={onCreate} busy={busy} hasMaterials={hasMaterials} />
+      <QuizSetup onCreate={onCreate} busy={busy} hasMaterials={hasMaterials} agentName={agentName} />
       <QuizList
         quizzes={session.quizzes}
         busy={busy}

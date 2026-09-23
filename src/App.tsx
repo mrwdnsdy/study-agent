@@ -6,6 +6,7 @@ import { DEFAULT_AGENT_NAME } from '../shared/agent/constants';
 import { getMode } from './lib/mode';
 import { ChatPanel } from './components/ChatPanel';
 import { GuideView } from './components/GuideView';
+import { KiikuMark } from './components/Kiiku';
 import { QuizPanel } from './components/QuizPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -327,10 +328,11 @@ export default function App() {
       )}
       <header className="topbar">
         <div className="brand">
-          <span className="brand__logo">
-            <GraduationCap size={20} />
+          <KiikuMark size={28} className="brand__mark" />
+          <span className="brand__text">
+            <span className="brand__name">{agentName}</span>
+            <span className="brand__eyebrow">Study Buddy</span>
           </span>
-          <span>Study Agent</span>
         </div>
         <div className="topbar__title" title={session?.title}>
           {session?.title ?? (state.sessionLoading ? 'Loading…' : '')}
@@ -340,6 +342,7 @@ export default function App() {
             <button
               key={t.id}
               type="button"
+              data-tab={t.id}
               className={`tab${tab === t.id ? ' is-active' : ''}${t.mobileOnly ? ' tab--mobile' : ''}`}
               onClick={() => dispatch({ type: 'tab', tab: t.id })}
             >
@@ -419,6 +422,7 @@ export default function App() {
                   session={session}
                   stream={stream}
                   busy={busy}
+                  agentName={agentName}
                   activeQuizId={state.activeQuizId}
                   onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
                   onCreate={createQuiz}
@@ -438,6 +442,7 @@ export default function App() {
                   session={session}
                   stream={stream}
                   busy={busy}
+                  agentName={agentName}
                   activeQuizId={state.activeQuizId}
                   onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
                   onReview={reviewQuiz}

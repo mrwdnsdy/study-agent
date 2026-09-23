@@ -3,6 +3,7 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { APP_NAME } from '../shared/agent/constants.js';
 import { displayModel } from '../shared/agent/core.js';
 import type { ServerConfigResponse } from '../shared/types.js';
 import { materialsRouter, sofficePath } from './routes/materials.js';
@@ -83,6 +84,6 @@ app.use((err: HttpError, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 app.listen(config.port, () => {
-  console.log(`Study Agent API listening on http://localhost:${config.port} (guide: ${config.models.guide.join(' → ')}, chat: ${config.models.chat.join(' → ')}, escalation: ${config.escalationModel ?? 'off'}, effort: ${config.effort}, data: ${config.dataDir})`);
+  console.log(`${APP_NAME} API listening on http://localhost:${config.port} (guide: ${config.models.guide.join(' → ')}, chat: ${config.models.chat.join(' → ')}, escalation: ${config.escalationModel ?? 'off'}, effort: ${config.effort}, data: ${config.dataDir})`);
   if (!config.hasApiKey) console.warn('ANTHROPIC_API_KEY is not set: Claude features will fail until it is configured in .env');
 });

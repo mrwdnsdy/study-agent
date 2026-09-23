@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, Loader2, MessageSquare, Sparkles, Target } from 'lucide-react';
+import { MessageSquare, Sparkles, Target } from 'lucide-react';
 import type { Quiz, Session } from '../../shared/types';
 import { percent } from '../lib/format';
 import { topicScores, weakTopics, type StreamState, type Toast } from '../state';
 import { ExportMenu } from './ExportMenu';
+import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 
 interface Props {
   session: Session;
   stream: StreamState;
   busy: boolean;
+  agentName: string;
   activeQuizId: string | null;
   onSelectQuiz: (quizId: string) => void;
   onReview: (quizId: string) => void;
@@ -23,7 +25,7 @@ function scoreLine(quiz: Quiz): string {
   return `${correct}/${quiz.answers.length} correct (${percent(correct, quiz.answers.length)}%)`;
 }
 
-export function ReviewPanel({ session, stream, busy, activeQuizId, onSelectQuiz, onReview, onQuizWeakAreas, onAskChat, onToast }: Props) {
+export function ReviewPanel({ session, stream, busy, agentName, activeQuizId, onSelectQuiz, onReview, onQuizWeakAreas, onAskChat, onToast }: Props) {
   const completed = useMemo(
     () => session.quizzes.filter((q) => q.answers.length > 0).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [session.quizzes],
@@ -43,11 +45,11 @@ export function ReviewPanel({ session, stream, busy, activeQuizId, onSelectQuiz,
       <div className="review review--empty">
         <div className="hero hero--compact">
           <div className="hero__icon">
-            <ClipboardList size={26} />
+            <KiikuBuddy size={44} />
           </div>
           <h2>No review yet</h2>
           <p className="muted">
-            Complete a quiz and the agent writes a post-quiz review session: a scorecard by topic, a question-by-question breakdown of what went
+            Complete a quiz and {agentName} writes a post-quiz review session: a scorecard by topic, a question-by-question breakdown of what went
             wrong and why, the misconceptions behind the mistakes, and a targeted revision plan.
           </p>
         </div>
@@ -93,7 +95,7 @@ export function ReviewPanel({ session, stream, busy, activeQuizId, onSelectQuiz,
       {streaming ? (
         <div className="card review__doc">
           <div className="msg__status">
-            <Loader2 size={16} className="spin" /> {stream.status || 'Reviewing your answers…'}
+            <KiikuBuddy size={20} mood="thinking" /> {stream.status || 'Reviewing your answers…'}
           </div>
           {stream.thinking && !stream.text && (
             <details className="thinking thinking--compact" open>

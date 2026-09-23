@@ -8,6 +8,7 @@
  * loads mermaid.
  */
 import type * as Md from 'mdast';
+import { APP_NAME } from '../../shared/agent/constants';
 import {
   AlignmentType,
   BorderStyle,
@@ -97,24 +98,26 @@ const FONT_CODE = 'Consolas';
 
 /** Colours as 6-digit hex without '#', as docx expects. */
 const THEME = {
-  text: '1f2937',
-  muted: '64748b',
-  quote: '475569',
-  h1: '3730a3',
-  h2: '4338ca',
-  h3: '1e293b',
-  h4: '334155',
-  link: '2563eb',
-  rule: 'cbd5e1',
-  codeBg: 'f1f5f9',
-  codeBorder: 'e2e8f0',
-  codeText: '0f172a',
-  inlineCodeBg: 'eef2ff',
-  inlineCodeText: '3730a3',
-  tableBorder: 'cbd5e1',
-  tableHeader: 'e0e7ff',
-  tableHeaderText: '1e1b4b',
-  tableStripe: 'f8fafc',
+  text: '14343B',
+  muted: '56696E',
+  quote: '3E5A60',
+  h1: '14343B',
+  h2: '1F6F78',
+  h3: '2A4A50',
+  h4: '3E5A60',
+  link: '1F6F78',
+  /** Marigold: the title-block rule. */
+  accent: 'E9A824',
+  rule: 'CFC4AE',
+  codeBg: 'F3EDE0',
+  codeBorder: 'E6DECD',
+  codeText: '14343B',
+  inlineCodeBg: 'FBEFD0',
+  inlineCodeText: '7A4E06',
+  tableBorder: 'CFC4AE',
+  tableHeader: 'FBEFD0',
+  tableHeaderText: '14343B',
+  tableStripe: 'F7F2E8',
 } as const;
 
 /** Font sizes in half-points. */
@@ -913,7 +916,7 @@ function titleBlock(title: string, subtitle: string | undefined, author: string 
     // Accent bar above the title.
     new Paragraph({
       spacing: { before: 3200, after: 360 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 36, color: THEME.h1, space: 1 } },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 36, color: THEME.accent, space: 1 } },
       run: { size: 8 },
       children: [],
     }),
@@ -1018,8 +1021,8 @@ async function buildDocument(markdown: string, options: DocxExportOptions): Prom
     title,
     subject: options.subtitle?.trim() || undefined,
     description: options.subtitle?.trim() || undefined,
-    creator: options.author?.trim() || 'Study Agent',
-    lastModifiedBy: options.author?.trim() || 'Study Agent',
+    creator: options.author?.trim() || APP_NAME,
+    lastModifiedBy: options.author?.trim() || APP_NAME,
     styles: buildStyles(),
     numbering: builder.numberingOptions(),
     sections: [

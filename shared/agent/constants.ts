@@ -14,6 +14,8 @@ export const TASK_LABELS: Record<AgentTask, string> = {
 
 /** The study agent's persona name (shown in the UI and used in the prompts). */
 export const DEFAULT_AGENT_NAME = 'Kiiku';
+/** The product name: page title, exports and logs. The persona above is what the tutor calls itself. */
+export const APP_NAME = 'Kiiku Study Buddy';
 
 /** Fallback when nothing else is configured. */
 export const DEFAULT_MODEL = 'claude-opus-5';
