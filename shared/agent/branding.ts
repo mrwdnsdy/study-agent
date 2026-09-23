@@ -15,7 +15,7 @@ const CF_MODEL = /@cf\/[\w./-]*[\w-]/gi;
 const PROVIDER =
   /\b(?:the\s+)?(?:anthropic|google gemini|google ai studio|openrouter|z\.ai|zhipu|cloudflare workers ai|workers ai|cloudflare|claude\.ai|api\.anthropic\.com|generativelanguage\.googleapis\.com)\b/gi;
 /** "claude-opus-5", "Gemini", "gemini-3.8-flash", "qwen3.8-27b:free", "GLM-4.7-Flash" … */
-const BARE_MODEL = /\b(?:the\s+)?(?:claude|gemini|gemma|qwen|glm|llama|mistral|mixtral|deepseek|nex)[\w-]*(?:\.[\w-]+)*(?::free)?/gi;
+const BARE_MODEL = /\b(?:the\s+)?(?:claude|gemini|gemma|qwen|glm|llama|mistral|mixtral|deepseek|nex-)[\w-]*(?:\.[\w-]+)*(?::free)?/gi;
 
 /** Rewrites provider and model names in a system message so a white-label page never shows them. */
 export function scrubModelNames(text: string): string {

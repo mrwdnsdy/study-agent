@@ -18,6 +18,11 @@ describe('scrubModelNames', () => {
     assert.equal(scrubModelNames('cf/@cf/google/gemma-4-26b-a4b-it failed'), 'The model failed');
   });
 
+  it('leaves ordinary words that start like model names alone', () => {
+    assert.equal(scrubModelNames('Try the next step, then continue.'), 'Try the next step, then continue.');
+    assert.equal(scrubModelNames('openrouter/nex-agi/nex-n2.5-pro:free failed'), 'The model failed');
+  });
+
   it('leaves unrelated text alone', () => {
     assert.equal(scrubModelNames('Google Docs export failed: pop-up blocked.'), 'Google Docs export failed: pop-up blocked.');
     assert.equal(scrubModelNames('Session not found'), 'Session not found');
