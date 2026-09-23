@@ -129,6 +129,19 @@ describe('streamDocument (through generateGuide)', () => {
     assert.match(lastUserText(resume), /interrupted by a connection problem\. It ended with:\n«….*whole module in order\.\n»/s);
   });
 
+  it('clears the waiting message once the words flow again', async () => {
+    const t = setup([
+      { text: [INTRO, 'Second paragraph that gets cu'], error: overloaded() },
+      { text: ['Second paragraph, now complete.\n'] },
+    ]);
+    await generateGuide(t.ctx, { materials: MATERIALS, prompt: 'Make a guide', send: t.send });
+    const lines = statuses(t.events);
+    const resumed = lines.lastIndexOf('Picking up where Kiiku left off…');
+    assert.ok(resumed >= 0, lines.join(' | '));
+    assert.equal(lines.at(-1), '', `the last status is cleared: ${lines.join(' | ')}`);
+    assert.ok(lines.indexOf('', resumed) > resumed, 'cleared after the resume message');
+  });
+
   it('continues after RECITATION with the recitation prompt', async () => {
     const t = setup([
       { text: [INTRO, 'Slide 2 says, word for word:\n'], stop: 'pause_turn', explanation: 'recitation' },

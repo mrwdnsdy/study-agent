@@ -144,7 +144,9 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
             <div>
               <strong>Writing your study guide{stream.guideVersion ? ` (v${stream.guideVersion})` : ''}…</strong>
               <div className="muted small">
-                {stream.status || 'Working through your materials'} · {wordCount(markdown).toLocaleString()} words so far
+                {[stream.status || (markdown.trim() ? '' : 'Working through your materials'), `${wordCount(markdown).toLocaleString()} words so far`]
+                  .filter(Boolean)
+                  .join(' · ')}
               </div>
             </div>
           </div>

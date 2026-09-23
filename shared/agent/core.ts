@@ -464,14 +464,26 @@ async function streamTurn(
   send: Send | undefined,
   signal?: AbortSignal,
 ): Promise<LlmMessage> {
-  const { onModelSwitch, onWait, ...rest } = handlers;
+  const { onModelSwitch, onWait, onText, ...rest } = handlers;
+  /** Whether the words have started; until then the status line may say why they have not (a retry, a switch, a resume). */
+  let writing = false;
   const llmHandlers: LlmHandlers = {
     ...rest,
+    onText: onText && ((delta) => {
+      if (!writing) {
+        writing = true;
+        // The words are flowing again: clear the waiting message instead of showing it for the rest of the answer.
+        send?.({ type: 'status', text: '' });
+      }
+      onText(delta);
+    }),
     onModelSwitch: (info) => {
+      writing = false;
       onModelSwitch?.(info.to);
       send?.({ type: 'status', text: switchStatus(info, namesModels(ctx)) });
     },
     onWait: (info) => {
+      writing = false;
       onWait?.();
       send?.({ type: 'status', text: waitStatus(ctx, info) });
     },
