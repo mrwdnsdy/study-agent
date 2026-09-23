@@ -22,13 +22,15 @@ export class ChainLlmClient implements LlmClient {
     const refs = (Array.isArray(request.model) ? request.model : [request.model]).map((r) => r.trim()).filter(Boolean);
     if (refs.length === 0) throw new LlmError('No model is configured for this task.', { provider: 'anthropic', model: '' });
     const failures: string[] = [];
+    let status: number | undefined;
     let produced = false;
     for (let index = 0; index < refs.length; index++) {
       const ref = parseModelRef(refs[index]);
       const client = this.resolve(ref.provider);
       const next = refs[index + 1];
-      const fail = (reason: string) => {
+      const fail = (reason: string, failureStatus?: number) => {
         failures.push(`${refs[index]}: ${reason}`);
+        if (status === undefined && failureStatus !== undefined) status = failureStatus;
         if (next) handlers.onModelSwitch?.({ from: refs[index], to: next, reason });
       };
       if (!client) {
@@ -59,10 +61,11 @@ export class ChainLlmClient implements LlmClient {
         return { ...message, ref: refs[index] };
       } catch (err) {
         if (signal?.aborted || produced) throw err;
-        fail(describe(err));
+        fail(describe(err), err instanceof LlmError ? err.status : undefined);
       }
     }
     const last = parseModelRef(refs[refs.length - 1]);
-    throw new LlmError(`No model could answer. ${failures.join(' · ')}`, { provider: last.provider, model: last.model });
+    // The first failure's status (e.g. 429) describes the outage best.
+    throw new LlmError(`No model could answer. ${failures.join(' · ')}`, { provider: last.provider, model: last.model, status });
   }
 }

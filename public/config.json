@@ -4,7 +4,7 @@
   "defaultLane": "free",
   "lanes": {
     "free": {
-      "label": "Free (Gemini first, open models as backup)",
+      "label": "Standard (free)",
       "model": [
         "gemini/gemini-3.8-flash",
         "gemini/gemini-3.5-flash-lite",
@@ -16,7 +16,7 @@
       "escalationModel": "off"
     },
     "claude": {
-      "label": "Claude (premium)",
+      "label": "Premium",
       "models": {
         "guide": "claude-opus-5",
         "chat": "claude-sonnet-5",
@@ -28,6 +28,7 @@
     }
   },
   "effort": "high",
-  "notice": "",
-  "agentName": "Kiiku"
+  "notice": "Kiiku is in testing; model access is provided by this site while it lasts.",
+  "agentName": "Kiiku",
+  "showModels": false
 }

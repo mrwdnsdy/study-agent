@@ -32,8 +32,16 @@ const EFFORT_LABELS: Record<Effort, string> = {
 
 function Intro({ resolved }: { resolved: EffectiveSettings }) {
   const site = getSiteConfig();
+  const whiteLabel = site.showModels === false;
   switch (resolved.source) {
     case 'site-proxy':
+      if (whiteLabel) {
+        return (
+          <p className="muted small">
+            {resolved.agentName} comes with model access provided by this site, so you can start straight away. {site.notice}
+          </p>
+        );
+      }
       return (
         <p className="muted small">
           This page comes with model access provided by the site owner, so you can start straight away. {site.notice}
@@ -52,11 +60,11 @@ function Intro({ resolved }: { resolved: EffectiveSettings }) {
     case 'artifact':
       return (
         <p className="muted small">
-          This copy of {resolved.agentName} runs on the Claude account you are signed in with on claude.ai; the first request asks you to allow
-          it. {site.notice}
+          This copy of {resolved.agentName} runs on the account you are signed in with here; the first request asks you to allow it. {site.notice}
         </p>
       );
     default:
+      if (whiteLabel) return <p className="muted small">Model access is not configured on this site yet. {site.notice}</p>;
       return (
         <p className="muted small">
           This page runs entirely in your browser. Your key and your study sessions are stored only on this device and are sent nowhere
@@ -94,6 +102,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
   if (!open) return null;
 
   const site = getSiteConfig();
+  const whiteLabel = site.showModels === false;
   const suggestions: readonly string[] = site.artifact ? ARTIFACT_SUGGESTIONS : MODEL_SUGGESTIONS;
   const set = <K extends keyof BrowserSettings>(key: K, value: BrowserSettings[K]) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -150,18 +159,20 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                     <input type="radio" name="lane" value={lane.id} checked={(preview.lane ?? '') === lane.id} onChange={() => set('lane', lane.id)} />
                     <span className="lane__body">
                       <span className="lane__label">{lane.label}</span>
-                      <span className="lane__meta">
-                        {lane.primary}
-                        {lane.escalation ? ` · maximum quality: ${lane.escalation}` : ''}
-                      </span>
+                      {!whiteLabel && (
+                        <span className="lane__meta">
+                          {lane.primary}
+                          {lane.escalation ? ` · maximum quality: ${lane.escalation}` : ''}
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}
-                {configured.length > 0 && <span className="field__hint">Keys on this site: {configured.join(', ')}.</span>}
+                {!whiteLabel && configured.length > 0 && <span className="field__hint">Keys on this site: {configured.join(', ')}.</span>}
               </fieldset>
             )}
 
-            {!site.artifact && (
+            {!site.artifact && !whiteLabel && (
             <label className="field">
               <span>{site.proxyUrl ? 'Your own Anthropic API key (optional)' : 'Anthropic API key'}</span>
               <span className="field__input-row">
@@ -189,6 +200,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
             )}
 
             <div className="field-row">
+              {!whiteLabel && (
               <label className="field">
                 <span>Model for every task (optional)</span>
                 <input
@@ -216,6 +228,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
                   . Typing a model here uses it for every task.
                 </span>
               </label>
+              )}
               <label className="field">
                 <span>Effort</span>
                 <select value={form.effort} onChange={(e) => set('effort', e.target.value as Effort | '')}>
@@ -229,7 +242,7 @@ export function SettingsDialog({ open, onClose, onSaved }: Props) {
               </label>
             </div>
 
-            {!site.artifact && (
+            {!site.artifact && !whiteLabel && (
               <>
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setAdvanced((v) => !v)}>
               {advanced ? 'Hide proxy settings' : 'Use your own proxy…'}

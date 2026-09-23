@@ -379,23 +379,23 @@ function describeSampleError(err: SampleError, model: string): LlmError {
   const make = (message: string, status?: number) => new LlmError(message, { provider: 'artifact', model, status, cause: err });
   switch (err.code) {
     case 'not_granted':
-      return make('Claude access was not allowed for this page. Reload the artifact and allow it to use Claude when asked.', 403);
+      return make('Model access was not allowed for this page. Reload the artifact and allow it when asked.', 403);
     case 'sampling_disabled':
-      return make('Claude is not available for this claude.ai account or organization.', 403);
+      return make('Model access is not available for this account or organization.', 403);
     case 'not_declared':
     case 'capability_disabled':
     case 'capability_removed':
-      return make('This artifact cannot use Claude in this view. Open it on claude.ai and try again.', 403);
+      return make('This artifact cannot reach the model in this view. Open it from its artifact link and try again.', 403);
     case 'session_expired':
-      return make('Your claude.ai session expired. Sign in again and retry.', 401);
+      return make('Your session expired. Sign in again and retry.', 401);
     case 'rate_limited':
-      return make('Your Claude usage limit was reached, or too many requests are running at once. Wait a little and try again.', 429);
+      return make('Your usage limit was reached, or too many requests are running at once. Wait a little and try again.', 429);
     case 'prompt_too_large':
       return make('This request is too large for the artifact runtime (64 KB of text per call). Remove some materials or shorten the conversation.', 413);
     case 'cancelled':
       return make('The request was stopped.');
     case 'upstream_error':
-      return make("Claude's answer was interrupted by a connection or service problem. Please try again.", 502);
+      return make('The answer was interrupted by a connection or service problem. Please try again.', 502);
     default:
       return make(`The artifact runtime rejected the request (${err.code}): ${err.message}`, 400);
   }
@@ -415,7 +415,7 @@ export class ArtifactSampleClient implements LlmClient {
     this.sample ??= this.options.resolve().catch(() => null);
     const sample = await this.sample;
     if (!sample) {
-      throw new LlmError('Claude is not available in this view. Open this page as a claude.ai artifact and allow it to use Claude.', {
+      throw new LlmError('Model access is not available in this view. Open this page as an artifact and allow it when asked.', {
         provider: 'artifact',
         model,
       });

@@ -14,6 +14,8 @@ interface Props {
   busy: boolean;
   models: TaskModels | null;
   escalationModel?: string;
+  /** False on white-label pages: never name the models. */
+  showModels?: boolean;
   agentName: string;
   onGenerate: (prompt: string, quality: GuideQuality) => void;
   onStop: () => void;
@@ -31,6 +33,7 @@ function PromptForm({
   initialQuality,
   guideModel,
   escalationModel,
+  showModels = true,
   agentName,
   hasMaterials,
   busy,
@@ -42,6 +45,8 @@ function PromptForm({
   initialQuality: GuideQuality;
   guideModel?: string;
   escalationModel?: string;
+  /** False on white-label pages: never name the models. */
+  showModels?: boolean;
   agentName: string;
   hasMaterials: boolean;
   busy: boolean;
@@ -70,8 +75,8 @@ function PromptForm({
         <label className="prompt-form__quality">
           Quality
           <select value={quality} onChange={(e) => setQuality(e.target.value as GuideQuality)} data-testid="guide-quality">
-            <option value="standard">Standard · {guideModel ?? 'default model'}</option>
-            <option value="max">Maximum · {displayModel(escalationModel)} (slower, about twice the cost)</option>
+            <option value="standard">{showModels ? `Standard · ${guideModel ?? 'default model'}` : 'Standard'}</option>
+            <option value="max">{showModels ? `Maximum · ${displayModel(escalationModel)} (slower, about twice the cost)` : 'Maximum quality (slower)'}</option>
           </select>
         </label>
       )}
@@ -89,7 +94,7 @@ function PromptForm({
   );
 }
 
-export function GuideView({ session, stream, busy, models, escalationModel, agentName, onGenerate, onStop, onToast }: Props) {
+export function GuideView({ session, stream, busy, models, escalationModel, showModels = true, agentName, onGenerate, onStop, onToast }: Props) {
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showToc, setShowToc] = useState(true);
   const streamingGuide = stream.guideDraft !== null;
@@ -145,6 +150,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
             initialQuality="standard"
             guideModel={displayModel(models?.guide)}
             escalationModel={escalationModel}
+            showModels={showModels}
             agentName={agentName}
             hasMaterials={hasMaterials}
             busy={busy}
@@ -163,7 +169,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
           <strong>{title}</strong>
           <span className="muted small">
             v{session.guide.version} · {wordCount(markdown).toLocaleString()} words · updated {relativeTime(session.guide.updatedAt)}
-            {session.guide.model ? ` · ${displayModel(session.guide.model)}` : ''}
+            {showModels && session.guide.model ? ` · ${displayModel(session.guide.model)}` : ''}
           </span>
         </div>
         <div className="guide__actions">
@@ -183,6 +189,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, agen
             initialQuality={session.guide.model && session.guide.model === escalationModel ? 'max' : 'standard'}
             guideModel={displayModel(models?.guide)}
             escalationModel={escalationModel}
+            showModels={showModels}
             agentName={agentName}
             hasMaterials={hasMaterials}
             busy={busy}

@@ -26,6 +26,7 @@ app.get('/api/config', async (_req, res) => {
     escalationModel: config.escalationModel,
     providers: config.providerKeys,
     hasApiKey: config.hasApiKey,
+    showModels: config.showModels,
     sofficeAvailable: Boolean(await sofficePath()),
     maxUploadMb: config.maxUploadMb,
   };

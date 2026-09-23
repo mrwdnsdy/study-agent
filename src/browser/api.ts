@@ -34,7 +34,7 @@ import { DEFAULT_SESSION_TITLE, blankSession, summarizeSession, titleFromFilenam
 import type { Api } from '../lib/api';
 import { localDb, partFileIds } from './db';
 import { detectKind, extractFile } from './extract';
-import { effectiveSettings, hasCredentials } from './settings';
+import { effectiveSettings, hasCredentials, type EffectiveSettings } from './settings';
 
 /** Inline PDFs count against Claude's 32 MB request limit once base64-encoded. */
 const MAX_PDF_MB = 20;
@@ -59,12 +59,20 @@ const nowIso = () => new Date().toISOString();
 export const MISSING_CREDENTIALS_MESSAGE =
   'Add your Anthropic API key (or a proxy URL) in Settings before using Claude features.';
 
+function missingCredentialsMessage(settings: EffectiveSettings): string {
+  return settings.showModels ? MISSING_CREDENTIALS_MESSAGE : 'Model access is not configured on this site yet.';
+}
+
+function errorOptions(settings: EffectiveSettings = effectiveSettings()): core.DescribeErrorOptions {
+  return { showModels: settings.showModels, agentName: settings.agentName };
+}
+
 /** One runtime client per page: `claude.use('sample')` is memoised by the viewer and its limits are read once. */
 let artifactClient: ArtifactSampleClient | null = null;
 
 function context(): core.AgentContext {
   const settings = effectiveSettings();
-  if (!hasCredentials(settings)) throw new Error(MISSING_CREDENTIALS_MESSAGE);
+  if (!hasCredentials(settings)) throw new Error(missingCredentialsMessage(settings));
   const { apiKey, baseUrl, accessCode } = settings;
   const headers = accessCode ? { 'x-access-code': accessCode } : undefined;
 
@@ -110,6 +118,7 @@ function context(): core.AgentContext {
     effort: settings.effort,
     escalationModel: settings.escalationModel,
     agentName: settings.agentName,
+    showModels: settings.showModels,
   };
 }
 
@@ -119,7 +128,7 @@ async function streaming(signal: AbortSignal | undefined, work: () => Promise<vo
     await work();
   } catch (err) {
     if (signal?.aborted) throw err;
-    throw new Error(core.describeError(err));
+    throw new Error(core.describeError(err, errorOptions()));
   }
 }
 
@@ -217,6 +226,7 @@ export const browserApi: Api = {
       lanes: settings.lanes,
       providers: settings.providers,
       hasApiKey: hasCredentials(settings),
+      showModels: settings.showModels,
       sofficeAvailable: false,
       maxUploadMb: MAX_UPLOAD_MB,
     };
@@ -273,7 +283,7 @@ export const browserApi: Api = {
       try {
         if (file.size > MAX_UPLOAD_MB * 1024 * 1024) throw new Error(`Files larger than ${MAX_UPLOAD_MB} MB are not supported.`);
         if (meta.kind === 'pdf' && file.size > MAX_PDF_MB * 1024 * 1024) {
-          throw new Error(`PDFs larger than ${MAX_PDF_MB} MB cannot be sent to Claude from the browser. Split or compress the file.`);
+          throw new Error(`PDFs larger than ${MAX_PDF_MB} MB are not supported in the browser. Split or compress the file.`);
         }
         const { material, files: blobs } = await extractFile(file, materialId);
         for (const [fileId, blob] of blobs) {
@@ -332,7 +342,7 @@ export const browserApi: Api = {
         id: newId(),
         role: 'assistant',
         kind: 'guide',
-        content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${displayModel(result.model)}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+        content: core.guideReadyMessage(version, wordCount(guide.markdown), result.model, ctx.showModels !== false),
         thinking: result.thinking || undefined,
         createdAt: nowIso(),
       };
@@ -468,7 +478,7 @@ export const browserApi: Api = {
       try {
         graded = await core.gradeShortAnswer(context(), question, body.answer);
       } catch (err) {
-        throw new Error(core.describeError(err));
+        throw new Error(core.describeError(err, errorOptions()));
       }
     } else {
       const options = question.options ?? [];

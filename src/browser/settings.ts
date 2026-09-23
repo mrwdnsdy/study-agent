@@ -65,6 +65,8 @@ export interface SiteConfig {
   providers?: Partial<Record<ProviderId, boolean>>;
   /** True inside the claude.ai artifact viewer, where "artifact/…" models reach Claude on the viewer's own account. */
   artifact?: boolean;
+  /** False for a white-label page: the UI never names the providers or models in use. */
+  showModels?: boolean;
 }
 
 export type CredentialSource = 'own-key' | 'own-proxy' | 'site-proxy' | 'artifact' | 'none';
@@ -83,6 +85,8 @@ export interface EffectiveSettings {
   lane?: string;
   lanes: LaneInfo[];
   providers?: Partial<Record<ProviderId, boolean>>;
+  /** False for a white-label page. */
+  showModels: boolean;
 }
 
 const STORAGE_KEY = 'study-agent:settings';
@@ -143,6 +147,7 @@ function parseSiteConfig(raw: Record<string, unknown>): SiteConfig {
     effort: isEffort(raw.effort) ? raw.effort : undefined,
     notice: cleanString(raw.notice) || undefined,
     agentName: cleanString(raw.agentName) || undefined,
+    showModels: raw.showModels === false ? false : undefined,
   };
 }
 
@@ -280,6 +285,7 @@ export function effectiveSettings(saved: BrowserSettings = loadSettings(), site:
   const effort: Effort = saved.effort || site.effort || 'high';
   const agentName = site.agentName ?? DEFAULT_AGENT_NAME;
   const lanes = laneInfos(site);
+  const showModels = site.showModels !== false;
 
   if (saved.baseUrl) {
     const lane = pickLane(site, saved.lane);
@@ -295,6 +301,7 @@ export function effectiveSettings(saved: BrowserSettings = loadSettings(), site:
       source: 'own-proxy',
       lane: lane.id,
       lanes,
+      showModels,
     };
   }
   if (saved.apiKey) {
@@ -313,11 +320,12 @@ export function effectiveSettings(saved: BrowserSettings = loadSettings(), site:
       source: 'own-key',
       lane: claudeLane ? 'claude' : undefined,
       lanes,
+      showModels,
     };
   }
   const lane = pickLane(site, saved.lane);
   const models = saved.model ? resolveTaskModels({}, saved.model) : lane.models;
-  const base = { apiKey: '', agentName, models, escalationModel: lane.escalationModel, effort, lane: lane.id, lanes, providers: site.providers };
+  const base = { apiKey: '', agentName, models, escalationModel: lane.escalationModel, effort, lane: lane.id, lanes, providers: site.providers, showModels };
   if (site.proxyUrl) {
     return { ...base, baseUrl: site.proxyUrl, accessCode: site.accessCode ?? '', source: 'site-proxy' };
   }

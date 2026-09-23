@@ -70,5 +70,7 @@ export const config = {
   useFilesApi: (process.env.ANTHROPIC_FILES_API?.trim().toLowerCase() ?? 'on') !== 'off',
   /** True when at least one provider used by the model chains has a credential. */
   hasApiKey: Object.values(providerKeys).some(Boolean),
+  /** SHOW_MODELS=false hides provider and model names from the UI and messages (white-label). */
+  showModels: env('SHOW_MODELS')?.toLowerCase() !== 'false',
   isProd: process.env.NODE_ENV === 'production',
 };

@@ -283,7 +283,7 @@ describe('ArtifactSampleClient', () => {
     );
     await assert.rejects(
       fakeSample(() => Promise.reject({ code: 'not_granted', message: 'denied' })).client.stream(request({ tools: undefined }), {}),
-      (err: unknown) => err instanceof LlmError && /allow it to use Claude/.test(err.message),
+      (err: unknown) => err instanceof LlmError && /allow it when asked/.test(err.message),
     );
     const unavailable = new ArtifactSampleClient({ resolve: async () => null });
     await assert.rejects(unavailable.stream(request({ tools: undefined }), {}), (err: unknown) => err instanceof LlmError && /not available in this view/.test(err.message));

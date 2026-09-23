@@ -31,6 +31,7 @@ import {
   type MaterialInfo,
 } from './prompts.js';
 
+import { scrubModelNames } from './branding.js';
 import { DEFAULT_AGENT_NAME, displayModel, type Effort } from './constants.js';
 import { LlmError, contentText, extractJsonObject, type LlmClient, type LlmHandlers, type LlmMessage, type LlmRequest } from './llm.js';
 
@@ -65,6 +66,12 @@ export interface AgentContext {
   escalationModel?: string;
   /** Persona name used in the system prompt (default: Kiiku). */
   agentName?: string;
+  /** False on white-label deployments: status lines and errors never name a provider or model. */
+  showModels?: boolean;
+}
+
+function namesModels(ctx: AgentContext): boolean {
+  return ctx.showModels !== false;
 }
 
 type ModelChain = string | string[];
@@ -91,7 +98,35 @@ type Send = (event: StreamEvent) => void;
 // Errors
 // ---------------------------------------------------------------------------
 
-export function describeError(err: unknown): string {
+export interface DescribeErrorOptions {
+  /** False on white-label deployments: no provider or model names in the text. */
+  showModels?: boolean;
+  agentName?: string;
+}
+
+function statusOf(err: unknown): number | undefined {
+  if (err instanceof LlmError) return err.status;
+  if (err instanceof Anthropic.APIError) return err.status;
+  return undefined;
+}
+
+/** Error text for white-label deployments: by status where possible, otherwise the message with names scrubbed. */
+function neutralErrorMessage(err: unknown, agentName: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof Anthropic.APIConnectionError) return 'Could not reach the model service. Check the connection and try again.';
+  if (/Could not resolve authentication method/i.test(message)) return 'Model access is not configured on this site.';
+  if (/credit balance/i.test(message)) return 'The model service account has run out of credit. Please try again later.';
+  const status = statusOf(err);
+  if (status === 401 || status === 403) return 'Model access on this site is not set up correctly. Please try again later.';
+  if (status === 402) return 'The model service declined the request (billing). Please try again later.';
+  if (status === 413) return 'This request is too large. Remove some materials or shorten the conversation.';
+  if (status === 429) return `${agentName} is busy right now. Wait a moment and try again.`;
+  if (status !== undefined && status >= 500) return 'The model service is having problems. Please try again in a moment.';
+  return scrubModelNames(message);
+}
+
+export function describeError(err: unknown, options: DescribeErrorOptions = {}): string {
+  if (options.showModels === false) return neutralErrorMessage(err, options.agentName ?? DEFAULT_AGENT_NAME);
   if (err instanceof LlmError) return err.message;
   if (err instanceof Anthropic.AuthenticationError) return 'Claude rejected the API key. Check the key and try again.';
   if (err instanceof Anthropic.PermissionDeniedError) return `Claude denied the request: ${err.message}`;
@@ -298,7 +333,8 @@ interface TurnHandlers {
   executeTool?: LlmHandlers['executeTool'];
 }
 
-function switchStatus(info: { from: string; to: string; reason: string }): string {
+function switchStatus(info: { from: string; to: string; reason: string }, showModels: boolean): string {
+  if (!showModels) return 'Trying another model…';
   const reason = info.reason.replace(/\s+/g, ' ').trim();
   const short = reason.length > 90 ? `${reason.slice(0, 87)}…` : reason;
   return `${displayModel(info.from)} unavailable (${short}); trying ${displayModel(info.to)}…`;
@@ -313,7 +349,7 @@ async function streamTurn(
 ): Promise<LlmMessage> {
   const llmHandlers: LlmHandlers = {
     ...handlers,
-    onModelSwitch: (info) => send?.({ type: 'status', text: switchStatus(info) }),
+    onModelSwitch: (info) => send?.({ type: 'status', text: switchStatus(info, namesModels(ctx)) }),
   };
   return ctx.llm.stream(request, llmHandlers, signal);
 }
@@ -329,9 +365,16 @@ function addUsage(total: UsageInfo, message: LlmMessage): void {
   total.cacheWriteTokens += message.usage.cache_creation_input_tokens;
 }
 
-function refusalError(message: LlmMessage, what: string): Error {
+function refusalError(message: LlmMessage, what: string, showModels: boolean): Error {
   const detail = message.stop_reason === 'refusal' ? message.stop_details?.explanation : undefined;
-  return new Error(`${displayModel(message.ref) || 'The model'} declined to ${what}${detail ? `: ${detail}` : '.'}`);
+  const who = (showModels && displayModel(message.ref)) || 'The model';
+  return new Error(`${who} declined to ${what}${detail ? `: ${showModels ? detail : scrubModelNames(detail)}` : '.'}`);
+}
+
+/** The chat note posted when a study guide has been written. */
+export function guideReadyMessage(version: number, words: number, model: string | undefined, showModels: boolean): string {
+  const by = showModels && model ? `, written by ${displayModel(model)}` : '';
+  return `📘 Study guide v${version} is ready (about ${words.toLocaleString()} words${by}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`;
 }
 
 const CONTINUE_PROMPT =
@@ -400,13 +443,19 @@ async function streamDocument(
 
   let result = await attempt(model);
   const fallback = escalationFor(ctx, model);
+  const showModels = namesModels(ctx);
   if (fallback && !result.markdown.trim()) {
-    send({ type: 'status', text: `${displayModel(result.used)} ${result.refusal ? 'declined' : 'returned nothing'}; trying ${displayModel(fallback)}…` });
+    send({
+      type: 'status',
+      text: showModels ? `${displayModel(result.used)} ${result.refusal ? 'declined' : 'returned nothing'}; trying ${displayModel(fallback)}…` : 'Trying a stronger model…',
+    });
     result = await attempt(fallback);
   }
-  if (result.refusal && !result.markdown.trim()) throw refusalError(result.refusal, what);
-  if (result.refusal) throw refusalError(result.refusal, `finish the response while trying to ${what}`);
-  if (!result.markdown.trim()) throw new Error(`${displayModel(result.used) || 'The model'} returned an empty response while trying to ${what}. Please try again.`);
+  if (result.refusal && !result.markdown.trim()) throw refusalError(result.refusal, what, showModels);
+  if (result.refusal) throw refusalError(result.refusal, `finish the response while trying to ${what}`, showModels);
+  if (!result.markdown.trim()) {
+    throw new Error(`${(showModels && displayModel(result.used)) || 'The model'} returned an empty response while trying to ${what}. Please try again.`);
+  }
   return { markdown: `${result.markdown.trim()}\n`, thinking, usage, model: result.used };
 }
 
@@ -567,11 +616,11 @@ export async function runChat(
     if (message.stop_reason === 'refusal') {
       const fallback = escalationFor(ctx, model);
       if (fallback && !text.trim()) {
-        opts.send({ type: 'status', text: `${displayModel(model)} declined; trying ${displayModel(fallback)}…` });
+        opts.send({ type: 'status', text: namesModels(ctx) ? `${displayModel(model)} declined; trying ${displayModel(fallback)}…` : 'Trying a stronger model…' });
         model = fallback;
         continue;
       }
-      throw refusalError(message, 'answer this');
+      throw refusalError(message, 'answer this', namesModels(ctx));
     }
     if (message.stop_reason === 'pause_turn') {
       messages.push({ role: 'assistant', content: message.content });
@@ -626,7 +675,7 @@ export async function requestQuiz(
   const maxAttempts = fallback ? 4 : 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt === 3 && fallback && model !== fallback) {
-      opts.send({ type: 'status', text: `Trying ${displayModel(fallback)}…` });
+      opts.send({ type: 'status', text: namesModels(ctx) ? `Trying ${displayModel(fallback)}…` : 'Trying a stronger model…' });
       model = fallback;
     }
     const message = await streamTurn(
@@ -646,11 +695,11 @@ export async function requestQuiz(
     model = message.ref;
     if (message.stop_reason === 'refusal') {
       if (fallback && model !== fallback) {
-        opts.send({ type: 'status', text: `${displayModel(model)} declined; trying ${displayModel(fallback)}…` });
+        opts.send({ type: 'status', text: namesModels(ctx) ? `${displayModel(model)} declined; trying ${displayModel(fallback)}…` : 'Trying a stronger model…' });
         model = fallback;
         continue;
       }
-      throw refusalError(message, 'create the quiz');
+      throw refusalError(message, 'create the quiz', namesModels(ctx));
     }
     const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
     if (message.stop_reason === 'max_tokens' && toolUses.length > 0) {
@@ -689,7 +738,7 @@ export async function requestQuiz(
           : 'Please call the create_quiz tool now with the complete quiz.',
     });
   }
-  throw new Error('Claude did not produce a quiz after several attempts. Please try again.');
+  throw new Error('No quiz was produced after several attempts. Please try again.');
 }
 
 function unique<T>(values: T[]): T[] {
@@ -774,9 +823,9 @@ export async function gradeShortAnswer(
   let response = await grade(ctx.models.grading);
   if (response.stop_reason === 'refusal') {
     const fallback = escalationFor(ctx, ctx.models.grading);
-    if (!fallback) throw refusalError(response, 'grade this answer');
+    if (!fallback) throw refusalError(response, 'grade this answer', namesModels(ctx));
     response = await grade(fallback);
-    if (response.stop_reason === 'refusal') throw refusalError(response, 'grade this answer');
+    if (response.stop_reason === 'refusal') throw refusalError(response, 'grade this answer', namesModels(ctx));
   }
   let parsed = parse(response);
   if (!parsed) {

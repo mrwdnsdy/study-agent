@@ -37,7 +37,7 @@ async function saveThroughArtifact(blob: Blob, filename: string): Promise<boolea
 export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
   if (isArtifactHost()) {
     if (await saveThroughArtifact(blob, filename)) return;
-    throw new Error('Saving files is not available in this view. Open the artifact on claude.ai to export.');
+    throw new Error('Saving files is not available in this view. Open the artifact from its link to export.');
   }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

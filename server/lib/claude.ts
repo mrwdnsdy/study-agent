@@ -16,7 +16,7 @@ import { CAPABILITIES, OpenAICompatClient } from '../../shared/agent/providers/o
 import { setPdfText } from '../../shared/agent/providers/pdfText.js';
 import type { ExtractedMaterial, MaterialPart } from './extract.js';
 
-export { buildQuiz, describeError, gradeChoice, basePrompt } from '../../shared/agent/core.js';
+export { buildQuiz, describeError, gradeChoice, basePrompt, guideReadyMessage } from '../../shared/agent/core.js';
 export type { ChatHooks, ChatResult, DocumentResult, QuizInput, UpdateGuideInput } from '../../shared/agent/core.js';
 
 let cachedClient: Anthropic | null = null;
@@ -89,7 +89,7 @@ const inlineOnly = !core
   .every((provider) => provider === 'anthropic');
 
 function context(): core.AgentContext {
-  return { llm, models: config.models, effort: config.effort, escalationModel: config.escalationModel, agentName: config.agentName };
+  return { llm, models: config.models, effort: config.effort, escalationModel: config.escalationModel, agentName: config.agentName, showModels: config.showModels };
 }
 
 type Send = (event: StreamEvent) => void;

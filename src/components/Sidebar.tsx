@@ -205,7 +205,12 @@ export function Sidebar({
 
       <footer className="sidebar__footer muted small">
         {config ? (
-          getMode() === 'browser' ? (
+          config.showModels === false ? (
+            <>
+              {config.lanes && config.lanes.length > 1 ? `${config.lanes.find((l) => l.id === config.lane)?.label ?? config.lane} · ` : ''}Your files and guides stay on this
+              device.
+            </>
+          ) : getMode() === 'browser' ? (
             <>
               Browser mode{config.lanes?.length ? ` · ${config.lanes.find((l) => l.id === config.lane)?.label ?? config.lane}` : ''} · guide on{' '}
               <code>{displayModel(config.models.guide)}</code>

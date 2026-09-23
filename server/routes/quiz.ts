@@ -4,6 +4,7 @@ import type { AnswerResponse, ChatMessage, Quiz, QuizAnswer } from '../../shared
 import { buildQuiz, describeError, generateReview, gradeChoice, gradeShortAnswer, requestQuiz } from '../lib/claude.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { httpError, nowIso, startStream } from './helpers.js';
+import { config } from '../config.js';
 
 export const quizRouter = Router();
 
@@ -49,7 +50,7 @@ quizRouter.post('/:id/quizzes', async (req, res) => {
     sse.send({ type: 'usage', usage });
     sse.send({ type: 'done' });
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err) });
+    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
     console.error('[quiz]', err);
   } finally {
     sse.end();
@@ -153,7 +154,7 @@ quizRouter.post('/:id/quizzes/:quizId/review', async (req, res) => {
     sse.send({ type: 'usage', usage: result.usage });
     sse.send({ type: 'done' });
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err) });
+    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
     console.error('[review]', err);
   } finally {
     sse.end();

@@ -309,7 +309,9 @@ export default function App() {
       {config && !config.hasApiKey && (
         <div className="banner banner--warn">
           <AlertTriangle size={16} />
-          {browserMode ? (
+          {config.showModels === false ? (
+            <span>Model access is not configured on this site yet.</span>
+          ) : browserMode ? (
             <span>
               Add your Anthropic API key to start. It stays in this browser and is only ever sent to Claude.{' '}
               <button type="button" className="banner__link" onClick={() => setSettingsOpen(true)}>
@@ -347,7 +349,7 @@ export default function App() {
           ))}
         </nav>
         <div className="topbar__meta">
-          {config && (
+          {config && config.showModels !== false && (
             <span
               className="pill pill--muted"
               title={`Study guide: ${config.models.guide.join(' → ')} · chat, quizzes, grading, reviews: ${config.models.chat.join(' → ')}`}
@@ -405,6 +407,7 @@ export default function App() {
                   busy={busy}
                   models={config?.models ?? null}
                   escalationModel={config?.escalationModel}
+                  showModels={config?.showModels !== false}
                   agentName={agentName}
                   onGenerate={generateGuide}
                   onStop={stopStream}

@@ -122,3 +122,11 @@ describe('artifact runtime', () => {
     assert.equal(effectiveSettings({ ...EMPTY_SETTINGS, model: 'artifact/quick' }, artifactSite).source, 'artifact');
   });
 });
+
+describe('showModels', () => {
+  it('defaults to naming the models and can be switched off for a white-label page', () => {
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS }, site).showModels, true);
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS }, { ...site, showModels: false }).showModels, false);
+    assert.equal(effectiveSettings({ ...EMPTY_SETTINGS, apiKey: 'sk-ant-x' }, { ...site, showModels: false }).showModels, false);
+  });
+});

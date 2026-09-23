@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_GUIDE_PROMPT, type ChatMessage, type StudyGuide } from '../../shared/types.js';
-import { basePrompt, buildQuiz, describeError, generateGuide, runChat, type ChatHooks } from '../lib/claude.js';
-import { displayModel } from '../../shared/agent/constants.js';
+import { basePrompt, buildQuiz, describeError, generateGuide, guideReadyMessage, runChat, type ChatHooks } from '../lib/claude.js';
 import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { nowIso, startStream } from './helpers.js';
@@ -31,7 +30,7 @@ studyRouter.post('/:id/generate', async (req, res) => {
       id: newId(),
       role: 'assistant',
       kind: 'guide',
-      content: `📘 Study guide v${version} is ready (about ${wordCount(guide.markdown).toLocaleString()} words, written by ${displayModel(result.model)}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`,
+      content: guideReadyMessage(version, wordCount(guide.markdown), result.model, config.showModels),
       thinking: result.thinking || undefined,
       createdAt: nowIso(),
     };
@@ -44,7 +43,7 @@ studyRouter.post('/:id/generate', async (req, res) => {
     sse.send({ type: 'usage', usage: result.usage });
     sse.send({ type: 'done' });
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err) });
+    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
     console.error('[generate]', err);
   } finally {
     sse.end();
@@ -131,7 +130,7 @@ studyRouter.post('/:id/chat', async (req, res) => {
     sse.send({ type: 'usage', usage: result.usage });
     sse.send({ type: 'done' });
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err) });
+    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
     console.error('[chat]', err);
   } finally {
     sse.end();

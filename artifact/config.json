@@ -2,7 +2,7 @@
   "defaultLane": "account",
   "lanes": {
     "account": {
-      "label": "Claude on your claude.ai account (through this artifact)",
+      "label": "Your account",
       "models": {
         "guide": "artifact/complex",
         "chat": "artifact/default",
@@ -14,6 +14,7 @@
     }
   },
   "effort": "high",
-  "notice": "Your study sessions stay in this browser. Each request goes to Claude on your own account, so it counts against your claude.ai usage.",
-  "agentName": "Kiiku"
+  "notice": "Your study sessions stay in this browser. Each request runs on the account you are signed in with here, so it counts against that plan.",
+  "agentName": "Kiiku",
+  "showModels": false
 }

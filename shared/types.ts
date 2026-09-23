@@ -213,6 +213,8 @@ export interface ServerConfigResponse {
   /** Which providers have credentials (from the proxy or the server environment). */
   providers?: Partial<Record<ProviderId, boolean>>;
   hasApiKey: boolean;
+  /** False on white-label deployments: the UI never names the providers or models in use. */
+  showModels: boolean;
   sofficeAvailable: boolean;
   maxUploadMb: number;
 }
