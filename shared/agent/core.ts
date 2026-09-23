@@ -56,6 +56,7 @@ import {
   continuePrompt,
   resumeDelay,
   trimToSafeBoundary,
+  withoutOpenDiagram,
   type ContinueReason,
   type PartialReason,
 } from './resume.js';
@@ -91,6 +92,7 @@ export {
   replyCutOffMessage,
   stoppedReasonPhrase,
   trimToSafeBoundary,
+  withoutOpenDiagram,
   type PartialReason,
 } from './resume.js';
 
@@ -568,7 +570,8 @@ async function streamDocument(
   let resumes = 0;
   let escalated = false;
 
-  const partial = (reason: PartialReason, cause?: unknown) => new PartialDocumentError(reason, { markdown: draft, thinking, usage, model: used }, cause);
+  const partial = (reason: PartialReason, cause?: unknown) =>
+    new PartialDocumentError(reason, { markdown: withoutOpenDiagram(draft), thinking, usage, model: used }, cause);
   const finished = (): DocumentResult => ({ markdown: `${draft.trim()}\n`, thinking, usage, model: used });
   const emptyError = () => new Error(`${(showModels && displayModel(used)) || 'The model'} returned an empty response while trying to ${what}. Please try again.`);
   /** Nothing has reached the page yet, so the escalation model can start over (once). */
@@ -852,7 +855,7 @@ export async function runChat(
   let continuing = false;
 
   const partial = (reason: PartialReason, cause?: unknown) =>
-    new PartialReplyError(reason, { text: text.trim(), thinking, toolEvents, usage }, cause);
+    new PartialReplyError(reason, { text: withoutOpenDiagram(text).trim(), thinking, toolEvents, usage }, cause);
   /** Cuts this turn's text back to a safe point and asks the model (on `ref`, then the rest of the chain) for the rest. */
   const continueTurn = (reason: ContinueReason, turnText: string, ref: string) => {
     const kept = trimToSafeBoundary(turnText);

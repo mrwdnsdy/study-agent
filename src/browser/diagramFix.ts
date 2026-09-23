@@ -58,12 +58,17 @@ export async function fixDiagramsInMarkdown(markdown: string, opts: FixDiagramsO
   try {
     for (const { code } of listMermaidBlocks(markdown)) {
       if (replacements.has(code) || broken.has(code)) continue;
+      // A repair that parses wins even over valid code: some slips parse but draw the wrong thing,
+      // and a diagram that follows the rules comes out of the repair unchanged.
+      const repaired = repairMermaid(code);
+      if (repaired !== code && (await errorOf(validate, repaired)) === null) {
+        replacements.set(code, repaired);
+        continue;
+      }
       const error = await errorOf(validate, code);
       // Valid, or impossible to check: leave the block as written.
       if (error === null || error === undefined) continue;
-      const repaired = repairMermaid(code);
-      if (repaired !== code && (await errorOf(validate, repaired)) === null) replacements.set(code, repaired);
-      else broken.set(code, error);
+      broken.set(code, error);
     }
 
     const batch = [...broken].slice(0, max).map(([code, error]) => ({ code, error }));

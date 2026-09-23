@@ -179,6 +179,7 @@ export function SaveAllToDrive({ session, agentName, onToast }: Props) {
         onFocus={preloadGoogleSignIn}
         disabled={progress !== null || nothingToSave}
         title={nothingToSave ? 'Nothing to save yet' : `Save the guide, reviews, quizzes, chat and diagrams to ${DRIVE_ROOT_FOLDER} / ${session.title} in your Google Drive`}
+        aria-label={progress ? undefined : 'Save all to Drive'}
         data-testid="save-all-drive"
       >
         {progress ? (
@@ -187,7 +188,7 @@ export function SaveAllToDrive({ session, agentName, onToast }: Props) {
           </>
         ) : (
           <>
-            <CloudUpload size={16} /> Save all to Drive
+            <CloudUpload size={16} aria-hidden="true" /> <span className="btn__label">Save all to Drive</span>
           </>
         )}
       </button>

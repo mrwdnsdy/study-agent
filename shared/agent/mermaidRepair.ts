@@ -2,8 +2,9 @@
  * Conservative text repairs for the Mermaid slips that language models make
  * most often. Each rule was checked against mermaid 12.0.0: it turns a diagram
  * that fails to parse into one that parses without changing what it says.
- * Callers only apply the repair when the original fails to parse, so a valid
- * diagram is never rewritten.
+ * A diagram that already follows the prompt's rules comes out byte for byte, so
+ * callers prefer the repaired version whenever it parses: some slips parse but
+ * draw the wrong thing (A["Label"] in a state diagram invents extra states).
  *
  * Pure TypeScript with no DOM access, so it runs in the browser, on the server
  * and under node:test.

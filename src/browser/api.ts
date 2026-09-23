@@ -130,9 +130,18 @@ async function streaming(signal: AbortSignal | undefined, work: () => Promise<vo
   try {
     await work();
   } catch (err) {
-    if (signal?.aborted) throw err;
+    if (signal?.aborted || isNotice(err)) throw err;
     throw new Error(core.describeError(err, errorOptions()));
   }
+}
+
+/** Marks an error whose work was saved anyway, so the page shows it as a notice rather than a failure. */
+function notice(message: string): Error {
+  return Object.assign(new Error(message), { notice: true });
+}
+
+function isNotice(err: unknown): boolean {
+  return (err as { notice?: unknown } | null)?.notice === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +192,7 @@ function agentNameOf(ctx: core.AgentContext): string {
 /** What to throw once a partial result is saved: the abort itself after Stop (the page shows no error), otherwise `message`. */
 function partialFailure(err: core.PartialDocumentError | core.PartialReplyError, message: string): unknown {
   if (err.reason === 'stopped') return err.cause ?? new DOMException('The operation was aborted.', 'AbortError');
-  return new Error(message);
+  return notice(message);
 }
 
 /**

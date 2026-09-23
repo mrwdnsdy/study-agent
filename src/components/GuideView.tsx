@@ -205,11 +205,11 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
           </span>
         </div>
         <div className="guide__actions">
-          <button type="button" className={`btn btn--ghost${showToc ? ' is-active' : ''}`} onClick={toggleToc} title="Table of contents">
-            <ListTree size={16} /> Contents
+          <button type="button" className={`btn btn--ghost${showToc ? ' is-active' : ''}`} onClick={toggleToc} title="Table of contents" aria-label="Contents">
+            <ListTree size={16} aria-hidden="true" /> <span className="btn__label">Contents</span>
           </button>
-          <button type="button" className="btn btn--ghost" onClick={() => setShowRegenerate((v) => !v)} disabled={busy}>
-            <RefreshCw size={16} /> Regenerate
+          <button type="button" className="btn btn--ghost" onClick={() => setShowRegenerate((v) => !v)} disabled={busy} title="Regenerate the guide" aria-label="Regenerate">
+            <RefreshCw size={16} aria-hidden="true" /> <span className="btn__label">Regenerate</span>
           </button>
           <SaveAllToDrive session={session} agentName={agentName} onToast={onToast} />
           <ExportMenu markdown={markdown} title={title} subtitle={`Study guide · ${session.title}`} folder={session.title} onToast={onToast} />

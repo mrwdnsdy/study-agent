@@ -1073,6 +1073,8 @@ fieldset legend {
 }
 
 .guide__toolbar {
+  /* The actions drop their labels when the column is narrow (see the container query below). */
+  container-type: inline-size;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1089,15 +1091,35 @@ fieldset legend {
 
 .guide__info {
   display: flex;
+  flex: 1 1 160px;
   flex-direction: column;
   min-width: 0;
 }
 
-.guide__info strong {
-  font-family: var(--font-display);
+.guide__info strong,
+.guide__info .small {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.guide__info strong {
+  font-family: var(--font-display);
+}
+
+.guide__actions {
+  flex: 0 0 auto;
+}
+
+/* Icon-only secondary actions when the guide column is narrow; their names stay in title and aria-label. */
+@container (max-width: 740px) {
+  .guide__actions .btn--ghost .btn__label {
+    display: none;
+  }
+
+  .guide__actions .btn--ghost {
+    padding-inline: 10px;
+  }
 }
 
 .guide__actions {

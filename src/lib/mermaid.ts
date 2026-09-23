@@ -144,16 +144,19 @@ export type ResolvedMermaid =
   | { error: string; code?: undefined; repaired?: undefined };
 
 /**
- * The code to render: the diagram as written when it parses, else its repaired
- * version when that parses. When both fail, the error is the original's, since
- * that is the code the reader can see.
+ * The code to render: its repaired version when the repair changed something
+ * and that parses, else the diagram as written when it parses. Some slips parse
+ * but draw the wrong thing (A["Label"] in a state diagram invents extra states),
+ * and the repair leaves a diagram that follows the prompt's rules byte for byte.
+ * When neither parses, the error is the original's, since that is the code the
+ * reader can see.
  */
 export async function resolveMermaidCode(code: string): Promise<ResolvedMermaid> {
   const original = normaliseMermaidCode(code);
-  const error = await mermaidError(original);
-  if (error === null) return { code: original, repaired: false };
   const repaired = repairMermaid(original);
   if (repaired && repaired !== original && (await mermaidError(repaired)) === null) return { code: repaired, repaired: true };
+  const error = await mermaidError(original);
+  if (error === null) return { code: original, repaired: false };
   return { error };
 }
 
@@ -181,6 +184,53 @@ function fontsReady(): Promise<void> {
   return fontsReadyPromise;
 }
 
+/** Node groups whose plain-SVG labels mermaid 12 does not centre: mindmap nodes and state boxes. */
+const UNCENTRED_NODE = /<g class="node\b[^"]*\b(?:mindmap-node|statediagram-state)\b[^"]*"[^>]*>/g;
+const G_TAG = /<(\/?)g\b([^>]*)>/g;
+const LABEL_TRANSLATE = /\btransform="translate\(\s*[-+\d.e]+\s*,\s*([-+\d.e]+)\s*\)"/;
+const TEXT_OPEN = /<text\b[^>]*>/g;
+
+/**
+ * mermaid 12 draws the plain-SVG labels of mindmap nodes and state boxes
+ * left-aligned: the text starts at the node's centre (circle, square, rounded
+ * and hexagon mindmap shapes) or at the left of a fixed-width label box (state
+ * boxes), so short labels sit off to one side. Each such node's label group
+ * moves to the node's centre and its text is centred there, which leaves the
+ * shapes that came out right as they were. Applied to the SVG itself, so the
+ * page and every export agree.
+ */
+export function centreNodeLabels(svg: string): string {
+  if (!/mindmap-node|statediagram-state/.test(svg)) return svg;
+  const edits: { from: number; to: number; text: string }[] = [];
+  for (const node of svg.matchAll(UNCENTRED_NODE)) {
+    // The node's own label is a direct child group: track <g> depth so a nested or later label is never taken.
+    G_TAG.lastIndex = node.index + node[0].length;
+    let depth = 1;
+    for (let tag = G_TAG.exec(svg); tag && depth > 0; tag = G_TAG.exec(svg)) {
+      if (tag[1]) {
+        depth -= 1;
+        continue;
+      }
+      if (depth === 1 && /\bclass="label"/.test(tag[2])) {
+        const translate = LABEL_TRANSLATE.exec(tag[0]);
+        TEXT_OPEN.lastIndex = tag.index + tag[0].length;
+        const text = TEXT_OPEN.exec(svg);
+        const nextGroup = svg.slice(tag.index + tag[0].length, text?.index ?? tag.index).search(/<g class="(?:node|label)\b/);
+        if (translate && text && nextGroup === -1 && !/text-anchor/.test(text[0])) {
+          const labelStart = tag.index + translate.index;
+          edits.push({ from: labelStart, to: labelStart + translate[0].length, text: `transform="translate(0, ${translate[1]})"` });
+          edits.push({ from: text.index + 5, to: text.index + 5, text: ' text-anchor="middle"' });
+        }
+        break;
+      }
+      if (!tag[0].endsWith('/>')) depth += 1;
+    }
+  }
+  let out = svg;
+  for (const edit of edits.sort((a, b) => b.from - a.from)) out = out.slice(0, edit.from) + edit.text + out.slice(edit.to);
+  return out;
+}
+
 /**
  * Render diagram source to an SVG string, repairing common slips first.
  * Throws with the parser's reason when the diagram cannot be drawn.
@@ -191,7 +241,7 @@ export async function renderMermaidSvg(code: string): Promise<string> {
   await fontsReady();
   const id = `mmd-${Date.now().toString(36)}-${(counter++).toString(36)}`;
   const { svg } = await mermaid.render(id, resolved.code);
-  return svg;
+  return centreNodeLabels(svg);
 }
 
 /** Widest a diagram is drawn in the page; anything wider scrolls sideways or opens in the lightbox. */
@@ -200,15 +250,19 @@ export const MAX_DIAGRAM_WIDTH = 1100;
 /**
  * On-screen width for a diagram whose natural (viewBox) width is `natural`
  * in a column `column` px wide. Diagrams keep their natural size, up to
- * 1100 px, and scroll sideways in a narrower column: scaling them down to fit
- * made labels 3–4 px tall. When the column would show less than 55% of the
- * diagram, it is drawn at 75% of its natural size (never narrower than the
- * column), which shows more of it while labels stay readable.
+ * 1100 px. One a little wider than the column shrinks to fit, down to 75% of
+ * that size, where labels are still comfortable to read; a wider one is drawn
+ * at 75% and scrolls sideways (Expand shows it whole). Squeezing every diagram
+ * into the column made labels 3–4 px tall.
  */
 export function diagramDisplayWidth(natural: number, column: number): number {
-  if (column > 0 && column < 0.55 * natural) return Math.max(column, 0.75 * natural);
-  return Math.min(natural, MAX_DIAGRAM_WIDTH);
+  const width = Math.min(natural, MAX_DIAGRAM_WIDTH);
+  if (column <= 0 || column >= width) return width;
+  return Math.max(column, MIN_DIAGRAM_SCALE * width);
 }
+
+/** Smallest scale a diagram is shrunk to so it fits the column. */
+export const MIN_DIAGRAM_SCALE = 0.75;
 
 export interface RasterisedSvg {
   blob: Blob;

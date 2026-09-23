@@ -61,6 +61,18 @@ function unclosedFenceStart(text: string): number {
 }
 
 /**
+ * Partial text without a Mermaid diagram that was cut off halfway: that code
+ * cannot be drawn (the page would show an error card) and a continuation redraws
+ * the diagram whole. Anything else, an unclosed code block included, is kept.
+ */
+export function withoutOpenDiagram(text: string): string {
+  const fence = unclosedFenceStart(text);
+  if (fence === -1 || !/^[ \t]*(?:>[ \t]*)*(?:`{3,}|~{3,})[ \t]*mermaid\b/i.test(text.slice(fence))) return text;
+  const kept = text.slice(0, fence).replace(/\s+$/, '');
+  return kept ? `${kept}\n` : text;
+}
+
+/**
  * Cuts a draft back to a point a continuation can safely start from: the end of
  * the last complete line, and before any code fence (a Mermaid diagram, say) that
  * is still open there, so the model rewrites that block whole instead of resuming
@@ -242,5 +254,5 @@ export function partialSavedMessage(agentName: string, reason: string): string {
 
 /** The error shown once a cut-off chat reply has been saved. */
 export function replyCutOffMessage(agentName: string): string {
-  return `${agentName}'s reply was cut off — tap Continue to let it finish.`;
+  return `${agentName}'s reply was cut off — press Continue to let it finish.`;
 }

@@ -155,3 +155,12 @@ test('uses the real mermaid parser by default', async (t) => {
   assert.ok(result.markdown.includes('A["Input (raw)"] --> end_["end"]'));
   assert.ok(result.markdown.includes('"A" : 40\n  "B" : 60'));
 });
+
+test('replaces a diagram that parses but draws the wrong thing with its repair', async () => {
+  // mermaid accepts flowchart labels in a state diagram and invents extra states from them.
+  const lenient = 'stateDiagram-v2\n  [*] --> A["Idle state"]\n  A --> [*]';
+  const result = await fixDiagramsInMarkdown(fence(lenient), { validate: async () => null });
+  assert.equal(result.fixed, 1);
+  assert.ok(result.markdown.includes('state "Idle state" as A'), result.markdown);
+  assert.ok(!result.markdown.includes('A["Idle state"]'), result.markdown);
+});

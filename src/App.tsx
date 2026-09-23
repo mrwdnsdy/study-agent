@@ -50,7 +50,12 @@ export default function App() {
   const busy = state.stream.kind !== null;
 
   const toast = useCallback((t: Toast | null) => dispatch({ type: 'toast', toast: t }), []);
-  const fail = useCallback((err: unknown) => toast({ kind: 'error', message: (err as Error).message || String(err) }), [toast]);
+  // Errors marked as notices (the work was saved; Continue finishes it) are shown as neutral information.
+  const fail = useCallback(
+    (err: unknown) =>
+      toast({ kind: (err as { notice?: unknown } | null)?.notice === true ? 'info' : 'error', message: (err as Error).message || String(err) }),
+    [toast],
+  );
 
   // A diagram card's "Save to Drive": the image goes to the same session folder as the documents.
   const sessionTitle = state.session?.title ?? '';

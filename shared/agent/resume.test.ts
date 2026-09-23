@@ -11,7 +11,25 @@ import {
   resumeDelay,
   stoppedReasonPhrase,
   trimToSafeBoundary,
+  withoutOpenDiagram,
 } from './resume.js';
+
+describe('withoutOpenDiagram', () => {
+  it('drops a diagram cut off halfway', () => {
+    assert.equal(withoutOpenDiagram('Intro.\n\n```mermaid\nflowchart TD\n  A --> B'), 'Intro.\n');
+    assert.equal(withoutOpenDiagram('Intro.\n~~~ Mermaid\nmindmap\n'), 'Intro.\n');
+  });
+
+  it('keeps everything else', () => {
+    const closed = 'Intro.\n```mermaid\nflowchart TD\n  A --> B\n```\nAfter';
+    assert.equal(withoutOpenDiagram(closed), closed);
+    const code = 'Intro.\n```python\nprint(1)';
+    assert.equal(withoutOpenDiagram(code), code, 'an unclosed code block still reads fine');
+    assert.equal(withoutOpenDiagram('Cut mid-sente'), 'Cut mid-sente');
+    const onlyDiagram = '```mermaid\nflowchart TD';
+    assert.equal(withoutOpenDiagram(onlyDiagram), onlyDiagram, 'never empties the text');
+  });
+});
 
 describe('trimToSafeBoundary', () => {
   it('cuts back to the end of the last complete line', () => {
