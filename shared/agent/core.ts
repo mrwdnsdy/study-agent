@@ -316,7 +316,8 @@ function baseRequest(ctx: AgentContext, model: ModelChain, messages: Anthropic.M
     tools: TOOLS,
     maxTokens,
     effort: ctx.effort,
-    showThinking: true,
+    // Thinking summaries are the model's own words and may name its maker, so white-label deployments do without them.
+    showThinking: namesModels(ctx),
     messages,
   };
 }
