@@ -23,6 +23,7 @@ import {
   type ToolEvent,
 } from '../../shared/types';
 import * as core from '../../shared/agent/core';
+import { repairDiagramsWithModel } from '../../shared/agent/diagramRepairLlm';
 import { displayModel } from '../../shared/agent/constants';
 import { AnthropicClient } from '../../shared/agent/providers/anthropic';
 import { ArtifactSampleClient, isArtifactHost, resolveRuntimeSample } from '../../shared/agent/providers/artifactSample';
@@ -34,6 +35,7 @@ import { applyGuideEdit, wordCount } from '../../shared/agent/guideEdits';
 import { DEFAULT_SESSION_TITLE, blankSession, summarizeSession, titleFromFilename } from '../../shared/session';
 import type { Api } from '../lib/api';
 import { localDb, partFileIds } from './db';
+import { fixDiagramsInMarkdown } from './diagramFix';
 import { detectKind, extractFile } from './extract';
 import { effectiveSettings, getSiteConfig, hasCredentials, type EffectiveSettings } from './settings';
 
@@ -275,6 +277,20 @@ async function saveFinishedReview(id: string, quiz: Quiz, result: core.DocumentR
   onEvent({ type: 'done' });
 }
 
+/**
+ * Repairs the diagrams of a finished document or reply before it is saved, so the stored text and
+ * every export hold diagrams that render. Whatever is still broken goes to the model in one request.
+ * Never throws; after Stop it saves the text as written.
+ */
+async function tidyDiagrams(ctx: core.AgentContext, markdown: string, send: Send, signal?: AbortSignal): Promise<string> {
+  if (signal?.aborted || !/^\s*(?:`{3,}|~{3,})\s*mermaid/im.test(markdown)) return markdown;
+  const fixed = await fixDiagramsInMarkdown(markdown, {
+    repairWithModel: (items) => repairDiagramsWithModel(ctx, items, signal),
+    onStatus: (text) => send({ type: 'status', text }),
+  });
+  return fixed.markdown;
+}
+
 /** The saved text of a reply that produced no text of its own. */
 function replyFallback(toolEvents: ToolEvent[]): string {
   return toolEvents.length ? toolEvents.map((e) => `✅ ${e.summary}`).join('\n') : '(No response text was produced. Please try again.)';
@@ -457,7 +473,8 @@ export const browserApi: Api = {
         const request: ChatMessage = { id: newId(), role: 'user', content: text, createdAt: nowIso(), kind: 'guide' };
         throw await savePartialGuide(id, ctx, err, { version, prompt: text, request }, onEvent);
       }
-      const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt: text, model: result.model };
+      const markdown = await tidyDiagrams(ctx, result.markdown, onEvent, signal);
+      const guide: StudyGuide = { markdown, version, updatedAt: nowIso(), prompt: text, model: result.model };
       const userMessage: ChatMessage = { id: newId(), role: 'user', content: text, createdAt: nowIso(), kind: 'guide' };
       const assistantMessage: ChatMessage = {
         id: newId(),
@@ -494,7 +511,8 @@ export const browserApi: Api = {
         if (!(err instanceof core.PartialDocumentError)) throw err;
         throw await savePartialGuide(id, ctx, err, { version: guide.version, prompt: guide.prompt, previous: guide }, onEvent);
       }
-      const finished: StudyGuide = { markdown: result.markdown, version: guide.version, updatedAt: nowIso(), prompt: guide.prompt, model: result.model, incomplete: false };
+      const markdown = await tidyDiagrams(ctx, result.markdown, onEvent, signal);
+      const finished: StudyGuide = { markdown, version: guide.version, updatedAt: nowIso(), prompt: guide.prompt, model: result.model, incomplete: false };
       const note: ChatMessage = {
         id: newId(),
         role: 'assistant',
@@ -563,7 +581,8 @@ export const browserApi: Api = {
             const failure = await savePartialGuide(id, ctx, err, { version, prompt }, send);
             throw err.reason === 'stopped' ? err : failure;
           }
-          const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt, model: result.model };
+          const markdown = await tidyDiagrams(ctx, result.markdown, send, signal);
+          const guide: StudyGuide = { markdown, version, updatedAt: nowIso(), prompt, model: result.model };
           await updateSession(id, (s) => void (s.guide = guide));
           send({ type: 'guide', guide });
           return guide;
@@ -604,11 +623,12 @@ export const browserApi: Api = {
         send({ type: 'usage', usage: err.usage });
         throw partialFailure(err, core.replyCutOffMessage(agentNameOf(ctx)));
       }
+      const reply = result.text ? await tidyDiagrams(ctx, result.text, send, signal) : '';
       const assistantMessage: ChatMessage = {
         id: newId(),
         role: 'assistant',
         kind: 'chat',
-        content: result.text || replyFallback(result.toolEvents),
+        content: reply || replyFallback(result.toolEvents),
         thinking: result.thinking || undefined,
         toolEvents: result.toolEvents.length ? result.toolEvents : undefined,
         createdAt: nowIso(),
@@ -718,6 +738,7 @@ export const browserApi: Api = {
         if (!(err instanceof core.PartialDocumentError)) throw err;
         throw await savePartialReview(id, quizId, ctx, err, onEvent);
       }
+      result.markdown = await tidyDiagrams(ctx, result.markdown, onEvent, signal);
       await saveFinishedReview(id, quiz, result, onEvent);
     }),
 
@@ -737,6 +758,7 @@ export const browserApi: Api = {
         if (!(err instanceof core.PartialDocumentError)) throw err;
         throw await savePartialReview(id, quizId, ctx, err, onEvent, quiz.review);
       }
+      result.markdown = await tidyDiagrams(ctx, result.markdown, onEvent, signal);
       await saveFinishedReview(id, quiz, result, onEvent);
     }),
 

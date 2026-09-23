@@ -121,7 +121,7 @@ interface Props {
 }
 
 export function MermaidDiagram({ code, streaming = false, name = 'diagram' }: Props) {
-  const { saveImage } = useContext(DiagramActionsContext);
+  const { saveImage, prepareSave } = useContext(DiagramActionsContext);
   const [svg, setSvg] = useState<string | null>(() => svgCache.get(code) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
@@ -228,8 +228,8 @@ export function MermaidDiagram({ code, streaming = false, name = 'diagram' }: Pr
     setBusy('save');
     setNotice(null);
     try {
-      await saveImage(await renderPng(), name);
-      setNotice('Saved to Drive.');
+      // The image is not awaited first: the saver may need to open a sign-in popup inside this click.
+      await saveImage(renderPng(), name);
     } catch (err) {
       setNotice(messageOf(err, 'Saving to Drive failed. Please try again.'));
     } finally {
@@ -261,6 +261,8 @@ export function MermaidDiagram({ code, streaming = false, name = 'diagram' }: Pr
               type="button"
               className="diagram__tool"
               onClick={save}
+              onPointerEnter={prepareSave}
+              onFocus={prepareSave}
               disabled={busy !== null}
               aria-busy={busy === 'save'}
               title="Save to Drive"

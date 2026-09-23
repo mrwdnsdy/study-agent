@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, ClipboardList, FolderOpen, GraduationCap, MessageSquare, Settings, X } from 'lucide-react';
 import { DEFAULT_GUIDE_PROMPT, type AnswerRequest, type ChatMessage, type GuideQuality, type QuizConfig, type StreamEvent } from '../shared/types';
 import { api } from './lib/api';
@@ -11,6 +11,8 @@ import { QuizPanel } from './components/QuizPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Sidebar } from './components/Sidebar';
+import { DiagramActionsContext, type DiagramActions } from './components/diagramActions';
+import { DRIVE_ROOT_FOLDER, DriveError, connect, isDriveAvailable, preloadGoogleSignIn, saveImage } from './lib/googleDrive';
 import { initialState, reducer, type StreamKind, type Tab, type Toast } from './state';
 
 type StreamStarter = (onEvent: (event: StreamEvent) => void, signal: AbortSignal) => Promise<void>;
@@ -49,6 +51,27 @@ export default function App() {
 
   const toast = useCallback((t: Toast | null) => dispatch({ type: 'toast', toast: t }), []);
   const fail = useCallback((err: unknown) => toast({ kind: 'error', message: (err as Error).message || String(err) }), [toast]);
+
+  // A diagram card's "Save to Drive": the image goes to the same session folder as the documents.
+  const sessionTitle = state.session?.title ?? '';
+  const saveDiagramToDrive = useCallback(
+    (png: Promise<Blob>, name: string): Promise<void> => {
+      // First, synchronously inside the card's click, so Google's sign-in popup is allowed to open.
+      const access = connect();
+      return Promise.all([access, png])
+        .then(([, image]) => saveImage(image, name, [DRIVE_ROOT_FOLDER, sessionTitle.trim() || 'Study session']))
+        .then(({ url }) => toast({ kind: 'success', message: 'Saved to your Google Drive.', link: { href: url, label: 'Open' } }))
+        .catch((err: unknown) => {
+          if (!(err instanceof DriveError)) throw err;
+          toast({ kind: err.cancelled ? 'info' : 'error', message: err.message });
+        });
+    },
+    [sessionTitle, toast],
+  );
+  const diagramActions = useMemo<DiagramActions>(
+    () => (isDriveAvailable() ? { saveImage: saveDiagramToDrive, prepareSave: preloadGoogleSignIn } : {}),
+    [saveDiagramToDrive],
+  );
 
   const refreshSessions = useCallback(async () => {
     const sessions = await api.listSessions();
@@ -335,203 +358,205 @@ export default function App() {
   const agentName = config?.agentName ?? DEFAULT_AGENT_NAME;
 
   return (
-    <div className="app">
-      {config && !config.hasApiKey && (
-        <div className="banner banner--warn">
-          <AlertTriangle size={16} />
-          {config.showModels === false ? (
-            <span>Model access is not configured on this site yet.</span>
-          ) : browserMode ? (
-            <span>
-              Add your Anthropic API key to start. It stays in this browser and is only ever sent to Claude.{' '}
-              <button type="button" className="banner__link" onClick={() => setSettingsOpen(true)}>
-                Open settings
-              </button>
-            </span>
-          ) : (
-            <span>
-              The server has no <code>ANTHROPIC_API_KEY</code>. Add it to <code>.env</code> and restart, otherwise Claude features will fail.
-            </span>
-          )}
-        </div>
-      )}
-      <header className="topbar">
-        <div className="brand">
-          <KiikuMark size={28} className="brand__mark" />
-          <span className="brand__text">
-            <span className="brand__name">{agentName}</span>
-            <span className="brand__eyebrow">Study Buddy</span>
-          </span>
-        </div>
-        <div className="topbar__title" title={session?.title}>
-          {session?.title ?? (state.sessionLoading ? 'Loading…' : '')}
-        </div>
-        <nav className="tabs" aria-label="Sections">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              data-tab={t.id}
-              className={`tab${tab === t.id ? ' is-active' : ''}${t.mobileOnly ? ' tab--mobile' : ''}`}
-              onClick={() => dispatch({ type: 'tab', tab: t.id })}
-            >
-              <t.icon size={16} /> <span>{t.label}</span>
-              {t.id === 'guide' && stream.guideDraft !== null && <span className="tab__dot" />}
-            </button>
-          ))}
-        </nav>
-        <div className="topbar__meta">
-          {config && config.showModels !== false && (
-            <span
-              className="pill pill--muted"
-              title={`Study guide: ${config.models.guide.join(' → ')} · chat, quizzes, grading, reviews: ${config.models.chat.join(' → ')}`}
-            >
-              {config.model}
-            </span>
-          )}
-          {state.lastUsage && (
-            <span className="pill pill--muted" title="Tokens used by the last request (input / output / cache reads)">
-              {state.lastUsage.inputTokens.toLocaleString()} in · {state.lastUsage.outputTokens.toLocaleString()} out ·{' '}
-              {state.lastUsage.cacheReadTokens.toLocaleString()} cached
-            </span>
-          )}
-        </div>
-        {browserMode && (
-          <button
-            type="button"
-            className={`icon-btn topbar__settings${config && !config.hasApiKey ? ' is-attention' : ''}`}
-            title="Settings (API key, model)"
-            aria-label="Settings"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings size={18} />
-          </button>
+    <DiagramActionsContext.Provider value={diagramActions}>
+      <div className="app">
+        {config && !config.hasApiKey && (
+          <div className="banner banner--warn">
+            <AlertTriangle size={16} />
+            {config.showModels === false ? (
+              <span>Model access is not configured on this site yet.</span>
+            ) : browserMode ? (
+              <span>
+                Add your Anthropic API key to start. It stays in this browser and is only ever sent to Claude.{' '}
+                <button type="button" className="banner__link" onClick={() => setSettingsOpen(true)}>
+                  Open settings
+                </button>
+              </span>
+            ) : (
+              <span>
+                The server has no <code>ANTHROPIC_API_KEY</code>. Add it to <code>.env</code> and restart, otherwise Claude features will fail.
+              </span>
+            )}
+          </div>
         )}
-      </header>
-
-      <div className={`layout layout--${tab}`}>
-        <aside className="sidebar">
-          <Sidebar
-            sessions={state.sessions}
-            session={session}
-            config={config}
-            uploading={state.uploading}
-            busy={busy}
-            onOpenSession={(id) => {
-              if (busy) stopStream();
-              void openSession(id);
-            }}
-            onCreateSession={createSession}
-            onRenameSession={renameSession}
-            onDeleteSession={deleteSession}
-            onUpload={upload}
-            onDeleteMaterial={deleteMaterial}
-          />
-        </aside>
-
-        <main className="main">
-          {session ? (
-            <>
-              {tab === 'guide' && (
-                <GuideView
-                  session={session}
-                  stream={stream}
-                  busy={busy}
-                  models={config?.models ?? null}
-                  escalationModel={config?.escalationModel}
-                  showModels={config?.showModels !== false}
-                  agentName={agentName}
-                  onGenerate={generateGuide}
-                  onContinue={continueGuide}
-                  onStop={stopStream}
-                  onToast={toast}
-                />
-              )}
-              {tab === 'quiz' && (
-                <QuizPanel
-                  session={session}
-                  stream={stream}
-                  busy={busy}
-                  agentName={agentName}
-                  activeQuizId={state.activeQuizId}
-                  onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
-                  onCreate={createQuiz}
-                  onAnswer={answerQuestion}
-                  onComplete={completeQuiz}
-                  onReview={reviewQuiz}
-                  onOpenReview={(quizId) => {
-                    dispatch({ type: 'quiz/select', quizId });
-                    dispatch({ type: 'tab', tab: 'review' });
-                  }}
-                  onDelete={deleteQuiz}
-                  onToast={toast}
-                />
-              )}
-              {tab === 'review' && (
-                <ReviewPanel
-                  session={session}
-                  stream={stream}
-                  busy={busy}
-                  agentName={agentName}
-                  activeQuizId={state.activeQuizId}
-                  onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
-                  onReview={reviewQuiz}
-                  onContinueReview={continueReview}
-                  onQuizWeakAreas={(focus) => createQuiz({ numQuestions: 8, difficulty: 'mixed', types: ['multiple_choice', 'true_false', 'short_answer'], focus })}
-                  onAskChat={askInChat}
-                  onToast={toast}
-                />
-              )}
-              {(tab === 'materials' || tab === 'chat') && <div className="main__placeholder muted">Use the panel on this screen.</div>}
-            </>
-          ) : (
-            <div className="main__placeholder muted">{state.sessionLoading ? 'Loading session…' : 'Create a session to get started.'}</div>
+        <header className="topbar">
+          <div className="brand">
+            <KiikuMark size={28} className="brand__mark" />
+            <span className="brand__text">
+              <span className="brand__name">{agentName}</span>
+              <span className="brand__eyebrow">Study Buddy</span>
+            </span>
+          </div>
+          <div className="topbar__title" title={session?.title}>
+            {session?.title ?? (state.sessionLoading ? 'Loading…' : '')}
+          </div>
+          <nav className="tabs" aria-label="Sections">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                data-tab={t.id}
+                className={`tab${tab === t.id ? ' is-active' : ''}${t.mobileOnly ? ' tab--mobile' : ''}`}
+                onClick={() => dispatch({ type: 'tab', tab: t.id })}
+              >
+                <t.icon size={16} /> <span>{t.label}</span>
+                {t.id === 'guide' && stream.guideDraft !== null && <span className="tab__dot" />}
+              </button>
+            ))}
+          </nav>
+          <div className="topbar__meta">
+            {config && config.showModels !== false && (
+              <span
+                className="pill pill--muted"
+                title={`Study guide: ${config.models.guide.join(' → ')} · chat, quizzes, grading, reviews: ${config.models.chat.join(' → ')}`}
+              >
+                {config.model}
+              </span>
+            )}
+            {state.lastUsage && (
+              <span className="pill pill--muted" title="Tokens used by the last request (input / output / cache reads)">
+                {state.lastUsage.inputTokens.toLocaleString()} in · {state.lastUsage.outputTokens.toLocaleString()} out ·{' '}
+                {state.lastUsage.cacheReadTokens.toLocaleString()} cached
+              </span>
+            )}
+          </div>
+          {browserMode && (
+            <button
+              type="button"
+              className={`icon-btn topbar__settings${config && !config.hasApiKey ? ' is-attention' : ''}`}
+              title="Settings (API key, model)"
+              aria-label="Settings"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings size={18} />
+            </button>
           )}
-        </main>
+        </header>
 
-        <aside className="chat">
-          {session && (
-            <ChatPanel
+        <div className={`layout layout--${tab}`}>
+          <aside className="sidebar">
+            <Sidebar
+              sessions={state.sessions}
               session={session}
-              stream={stream}
+              config={config}
+              uploading={state.uploading}
               busy={busy}
-              draft={draft}
-              onDraftChange={setDraft}
-              onSend={sendChat}
-              onStop={stopStream}
-              onClear={clearChat}
-              onGenerateGuide={() => generateGuide(session.guide ? (session.guide.prompt.split('\n\nRevision instructions:')[0] ?? DEFAULT_GUIDE_PROMPT) : DEFAULT_GUIDE_PROMPT)}
-              onToast={toast}
-              agentName={agentName}
+              onOpenSession={(id) => {
+                if (busy) stopStream();
+                void openSession(id);
+              }}
+              onCreateSession={createSession}
+              onRenameSession={renameSession}
+              onDeleteSession={deleteSession}
+              onUpload={upload}
+              onDeleteMaterial={deleteMaterial}
             />
-          )}
-        </aside>
-      </div>
+          </aside>
 
-      {browserMode && (
-        <SettingsDialog
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          onSaved={() => {
-            void loadConfig();
-            toast({ kind: 'success', message: 'Settings saved in this browser.' });
-          }}
-        />
-      )}
+          <main className="main">
+            {session ? (
+              <>
+                {tab === 'guide' && (
+                  <GuideView
+                    session={session}
+                    stream={stream}
+                    busy={busy}
+                    models={config?.models ?? null}
+                    escalationModel={config?.escalationModel}
+                    showModels={config?.showModels !== false}
+                    agentName={agentName}
+                    onGenerate={generateGuide}
+                    onContinue={continueGuide}
+                    onStop={stopStream}
+                    onToast={toast}
+                  />
+                )}
+                {tab === 'quiz' && (
+                  <QuizPanel
+                    session={session}
+                    stream={stream}
+                    busy={busy}
+                    agentName={agentName}
+                    activeQuizId={state.activeQuizId}
+                    onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
+                    onCreate={createQuiz}
+                    onAnswer={answerQuestion}
+                    onComplete={completeQuiz}
+                    onReview={reviewQuiz}
+                    onOpenReview={(quizId) => {
+                      dispatch({ type: 'quiz/select', quizId });
+                      dispatch({ type: 'tab', tab: 'review' });
+                    }}
+                    onDelete={deleteQuiz}
+                    onToast={toast}
+                  />
+                )}
+                {tab === 'review' && (
+                  <ReviewPanel
+                    session={session}
+                    stream={stream}
+                    busy={busy}
+                    agentName={agentName}
+                    activeQuizId={state.activeQuizId}
+                    onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
+                    onReview={reviewQuiz}
+                    onContinueReview={continueReview}
+                    onQuizWeakAreas={(focus) => createQuiz({ numQuestions: 8, difficulty: 'mixed', types: ['multiple_choice', 'true_false', 'short_answer'], focus })}
+                    onAskChat={askInChat}
+                    onToast={toast}
+                  />
+                )}
+                {(tab === 'materials' || tab === 'chat') && <div className="main__placeholder muted">Use the panel on this screen.</div>}
+              </>
+            ) : (
+              <div className="main__placeholder muted">{state.sessionLoading ? 'Loading session…' : 'Create a session to get started.'}</div>
+            )}
+          </main>
 
-      {state.toast && (
-        <div className={`toast toast--${state.toast.kind}`} role="status">
-          <span>{state.toast.message}</span>
-          {state.toast.link && (
-            <a href={state.toast.link.href} target="_blank" rel="noreferrer">
-              {state.toast.link.label}
-            </a>
-          )}
-          <button type="button" className="icon-btn" onClick={() => toast(null)} aria-label="Dismiss">
-            <X size={14} />
-          </button>
+          <aside className="chat">
+            {session && (
+              <ChatPanel
+                session={session}
+                stream={stream}
+                busy={busy}
+                draft={draft}
+                onDraftChange={setDraft}
+                onSend={sendChat}
+                onStop={stopStream}
+                onClear={clearChat}
+                onGenerateGuide={() => generateGuide(session.guide ? (session.guide.prompt.split('\n\nRevision instructions:')[0] ?? DEFAULT_GUIDE_PROMPT) : DEFAULT_GUIDE_PROMPT)}
+                onToast={toast}
+                agentName={agentName}
+              />
+            )}
+          </aside>
         </div>
-      )}
-    </div>
+
+        {browserMode && (
+          <SettingsDialog
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onSaved={() => {
+              void loadConfig();
+              toast({ kind: 'success', message: 'Settings saved in this browser.' });
+            }}
+          />
+        )}
+
+        {state.toast && (
+          <div className={`toast toast--${state.toast.kind}`} role="status">
+            <span>{state.toast.message}</span>
+            {state.toast.link && (
+              <a href={state.toast.link.href} target="_blank" rel="noreferrer">
+                {state.toast.link.label}
+              </a>
+            )}
+            <button type="button" className="icon-btn" onClick={() => toast(null)} aria-label="Dismiss">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+    </DiagramActionsContext.Provider>
   );
 }
