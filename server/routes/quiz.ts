@@ -1,7 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { AnswerResponse, ChatMessage, Quiz, QuizAnswer } from '../../shared/types.js';
-import { buildQuiz, describeError, generateReview, gradeChoice, gradeShortAnswer, requestQuiz } from '../lib/claude.js';
+import type { AnswerResponse, ChatMessage, Quiz, QuizAnswer, StreamEvent } from '../../shared/types.js';
+import {
+  PartialDocumentError,
+  buildQuiz,
+  continueDocument,
+  describeError,
+  generateReview,
+  gradeChoice,
+  gradeShortAnswer,
+  longerDraft,
+  partialSavedMessage,
+  requestQuiz,
+  type DocumentResult,
+} from '../lib/claude.js';
 import { getMaterials, newId, requireSession, updateSession } from '../lib/store.js';
 import { httpError, nowIso, startStream } from './helpers.js';
 import { config } from '../config.js';
@@ -27,6 +39,78 @@ function findQuiz(quizzes: Quiz[], quizId: string): Quiz {
   return quiz;
 }
 
+type Send = (event: StreamEvent) => void;
+
+const errorOptions = () => ({ showModels: config.showModels, agentName: config.agentName });
+
+/** Saves a finished review with its announcement in the chat, and sends both. */
+async function saveFinishedReview(id: string, quiz: Quiz, result: DocumentResult, send: Send): Promise<void> {
+  const correct = quiz.answers.filter((a) => a.correct).length;
+  const userMessage: ChatMessage = {
+    id: newId(),
+    role: 'user',
+    kind: 'quiz-review',
+    content: `I completed the quiz "${quiz.title}" and scored ${correct}/${quiz.answers.length}. Please review my performance.`,
+    createdAt: nowIso(),
+  };
+  const assistantMessage: ChatMessage = {
+    id: newId(),
+    role: 'assistant',
+    kind: 'quiz-review',
+    content: result.markdown,
+    thinking: result.thinking || undefined,
+    createdAt: nowIso(),
+  };
+  const updated = await updateSession(id, (s) => {
+    const target = findQuiz(s.quizzes, quiz.id);
+    target.review = result.markdown;
+    target.reviewGeneratedAt = nowIso();
+    target.reviewIncomplete = false;
+    if (target.status !== 'completed') {
+      target.status = 'completed';
+      target.completedAt = nowIso();
+    }
+    s.messages.push(userMessage, assistantMessage);
+  });
+  send({ type: 'review', quiz: findQuiz(updated.quizzes, quiz.id) });
+  send({ type: 'message', message: assistantMessage });
+  send({ type: 'usage', usage: result.usage });
+  send({ type: 'done' });
+}
+
+/**
+ * Saves a review that stopped partway (keeping the longer of it and `previous`) and
+ * sends it. Returns the error message for the page, or null after Stop. A failed
+ * save keeps `fallback`, the message the page would have had anyway.
+ */
+async function savePartialReview(
+  id: string,
+  quizId: string,
+  err: PartialDocumentError,
+  send: Send,
+  fallback: string | null,
+  previous?: string,
+): Promise<string | null> {
+  try {
+    const updated = await updateSession(id, (s) => {
+      const target = findQuiz(s.quizzes, quizId);
+      target.review = longerDraft(previous, err.markdown);
+      target.reviewGeneratedAt = nowIso();
+      target.reviewIncomplete = true;
+      if (target.status !== 'completed') {
+        target.status = 'completed';
+        target.completedAt = nowIso();
+      }
+    });
+    send({ type: 'review', quiz: findQuiz(updated.quizzes, quizId) });
+    send({ type: 'usage', usage: err.usage });
+    return err.reason === 'stopped' ? null : partialSavedMessage(config.agentName, err.stoppedReason);
+  } catch (saveErr) {
+    console.error('[review] could not save the partial review', saveErr);
+    return fallback;
+  }
+}
+
 quizRouter.post('/:id/quizzes', async (req, res) => {
   const id = req.params.id;
   const quizConfig = QuizConfigSchema.parse(req.body);
@@ -50,7 +134,7 @@ quizRouter.post('/:id/quizzes', async (req, res) => {
     sse.send({ type: 'usage', usage });
     sse.send({ type: 'done' });
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
+    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, errorOptions()) });
     console.error('[quiz]', err);
   } finally {
     sse.end();
@@ -120,42 +204,40 @@ quizRouter.post('/:id/quizzes/:quizId/review', async (req, res) => {
   if (quiz.answers.length === 0) throw httpError(400, 'Answer at least one question before asking for a review.');
   const materials = await getMaterials(id);
   const { sse, signal } = startStream(req, res);
+  const send: Send = (e) => sse.send(e);
   try {
     sse.send({ type: 'status', text: 'Reviewing your answers…' });
-    const result = await generateReview({ materials, guide: session.guide, quiz, send: (e) => sse.send(e), signal });
-    const correct = quiz.answers.filter((a) => a.correct).length;
-    const userMessage: ChatMessage = {
-      id: newId(),
-      role: 'user',
-      kind: 'quiz-review',
-      content: `I completed the quiz "${quiz.title}" and scored ${correct}/${quiz.answers.length}. Please review my performance.`,
-      createdAt: nowIso(),
-    };
-    const assistantMessage: ChatMessage = {
-      id: newId(),
-      role: 'assistant',
-      kind: 'quiz-review',
-      content: result.markdown,
-      thinking: result.thinking || undefined,
-      createdAt: nowIso(),
-    };
-    const updated = await updateSession(id, (s) => {
-      const target = findQuiz(s.quizzes, quizId);
-      target.review = result.markdown;
-      target.reviewGeneratedAt = nowIso();
-      if (target.status !== 'completed') {
-        target.status = 'completed';
-        target.completedAt = nowIso();
-      }
-      s.messages.push(userMessage, assistantMessage);
-    });
-    sse.send({ type: 'review', quiz: findQuiz(updated.quizzes, quizId) });
-    sse.send({ type: 'message', message: assistantMessage });
-    sse.send({ type: 'usage', usage: result.usage });
-    sse.send({ type: 'done' });
+    const result = await generateReview({ materials, guide: session.guide, quiz, send, signal });
+    await saveFinishedReview(id, quiz, result, send);
   } catch (err) {
-    if (!signal.aborted) sse.send({ type: 'error', message: describeError(err, { showModels: config.showModels, agentName: config.agentName }) });
+    let message: string | null = signal.aborted ? null : describeError(err, errorOptions());
+    if (err instanceof PartialDocumentError) message = await savePartialReview(id, quizId, err, send, message);
+    if (message && !signal.aborted) sse.send({ type: 'error', message });
     console.error('[review]', err);
+  } finally {
+    sse.end();
+  }
+});
+
+quizRouter.post('/:id/quizzes/:quizId/review/continue', async (req, res) => {
+  const { id, quizId } = req.params;
+  const session = await requireSession(id);
+  const quiz = findQuiz(session.quizzes, quizId);
+  const draft = quiz.review;
+  if (!quiz.reviewIncomplete || !draft) throw httpError(409, 'This review is already complete.');
+  const materials = await getMaterials(id);
+  const { sse, signal } = startStream(req, res);
+  const send: Send = (e) => sse.send(e);
+  try {
+    sse.send({ type: 'status', text: `Picking up where ${config.agentName} left off…` });
+    sse.send({ type: 'draft', target: 'text', text: draft });
+    const result = await continueDocument({ kind: 'review', materials, guide: session.guide, quiz, draft, send, signal });
+    await saveFinishedReview(id, quiz, result, send);
+  } catch (err) {
+    let message: string | null = signal.aborted ? null : describeError(err, errorOptions());
+    if (err instanceof PartialDocumentError) message = await savePartialReview(id, quizId, err, send, message, draft);
+    if (message && !signal.aborted) sse.send({ type: 'error', message });
+    console.error('[review/continue]', err);
   } finally {
     sse.end();
   }

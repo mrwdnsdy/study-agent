@@ -33,7 +33,32 @@ import {
 
 import { scrubModelNames } from './branding.js';
 import { DEFAULT_AGENT_NAME, displayModel, type Effort } from './constants.js';
-import { LlmError, contentText, extractJsonObject, type LlmClient, type LlmHandlers, type LlmMessage, type LlmRequest } from './llm.js';
+import {
+  LlmError,
+  abortableSleep,
+  contentText,
+  extractJsonObject,
+  isNetworkTypeError,
+  isTransient,
+  toolUseBlocks,
+  type LlmClient,
+  type LlmHandlers,
+  type LlmMessage,
+  type LlmRequest,
+} from './llm.js';
+import { chainFrom } from './providers/chain.js';
+import {
+  ContinuationJoiner,
+  PartialDocumentError,
+  PartialReplyError,
+  TAIL_CHARS,
+  continuationReason,
+  continuePrompt,
+  resumeDelay,
+  trimToSafeBoundary,
+  type ContinueReason,
+  type PartialReason,
+} from './resume.js';
 
 export {
   AGENT_TASKS,
@@ -54,7 +79,20 @@ export {
   type ModelRef,
 } from './constants.js';
 export type { LlmClient, LlmHandlers, LlmMessage, LlmRequest } from './llm.js';
-export { LlmError } from './llm.js';
+export { LlmError, isTransient } from './llm.js';
+export {
+  PartialDocumentError,
+  PartialReplyError,
+  guidePartialMessage,
+  joinContinuation,
+  longerDraft,
+  partialGuide,
+  partialSavedMessage,
+  replyCutOffMessage,
+  stoppedReasonPhrase,
+  trimToSafeBoundary,
+  type PartialReason,
+} from './resume.js';
 
 export interface AgentContext {
   /** Claude, Gemini, an OpenAI-compatible endpoint, or a fallback chain of them. */
@@ -68,10 +106,16 @@ export interface AgentContext {
   agentName?: string;
   /** False on white-label deployments: status lines and errors never name a provider or model. */
   showModels?: boolean;
+  /** Waits before resuming after a dropped connection (default: setTimeout, abort-aware). Injectable for tests. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 function namesModels(ctx: AgentContext): boolean {
   return ctx.showModels !== false;
+}
+
+function agentNameOf(ctx: AgentContext): string {
+  return ctx.agentName?.trim() || DEFAULT_AGENT_NAME;
 }
 
 type ModelChain = string | string[];
@@ -110,12 +154,34 @@ function statusOf(err: unknown): number | undefined {
   return undefined;
 }
 
-/** Error text for white-label deployments: by status where possible, otherwise the message with names scrubbed. */
+function dailyQuotaMessage(agentName: string): string {
+  return `${agentName} has reached today's free limit. It resets overnight — you can also use ${agentName} with your own account.`;
+}
+
+function connectionLostMessage(agentName: string): string {
+  return `Lost the connection to ${agentName}. Check your internet connection and try again.`;
+}
+
+function isConnectionLoss(err: unknown): boolean {
+  return (err instanceof LlmError && (err.kind === 'network' || err.kind === 'stalled')) || isNetworkTypeError(err);
+}
+
+/** "Kiiku stopped partway (connection problem)" for the partial-result errors. */
+function partialMessage(err: PartialDocumentError | PartialReplyError, agentName: string): string {
+  return err instanceof PartialDocumentError
+    ? `${agentName} stopped partway (${err.stoppedReason}).`
+    : `${agentName}'s reply was cut off (${err.stoppedReason}).`;
+}
+
+/** Error text for white-label deployments: by kind and status where possible, otherwise the message with names scrubbed. */
 function neutralErrorMessage(err: unknown, agentName: string): string {
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof PartialDocumentError || err instanceof PartialReplyError) return partialMessage(err, agentName);
   if (err instanceof Anthropic.APIConnectionError) return 'Could not reach the model service. Check the connection and try again.';
   if (/Could not resolve authentication method/i.test(message)) return 'Model access is not configured on this site.';
   if (/credit balance/i.test(message)) return 'The model service account has run out of credit. Please try again later.';
+  if (err instanceof LlmError && err.kind === 'daily_quota') return dailyQuotaMessage(agentName);
+  if (isConnectionLoss(err)) return connectionLostMessage(agentName);
   const status = statusOf(err);
   if (status === 401 || status === 403) return 'Model access on this site is not set up correctly. Please try again later.';
   if (status === 402) return 'The model service declined the request (billing). Please try again later.';
@@ -126,8 +192,17 @@ function neutralErrorMessage(err: unknown, agentName: string): string {
 }
 
 export function describeError(err: unknown, options: DescribeErrorOptions = {}): string {
-  if (options.showModels === false) return neutralErrorMessage(err, options.agentName ?? DEFAULT_AGENT_NAME);
-  if (err instanceof LlmError) return err.message;
+  const agentName = options.agentName?.trim() || DEFAULT_AGENT_NAME;
+  if (options.showModels === false) return neutralErrorMessage(err, agentName);
+  if (err instanceof PartialDocumentError || err instanceof PartialReplyError) {
+    const cause = err.cause instanceof Error ? ` ${err.cause.message}` : '';
+    return `${partialMessage(err, agentName)}${cause}`;
+  }
+  if (err instanceof LlmError) {
+    if (err.kind === 'daily_quota') return `${err.message} — today's free quota is used up; it resets overnight.`;
+    if (err.kind === 'network' || err.kind === 'stalled') return `Lost the connection to the model: ${err.message}. Check your internet connection and try again.`;
+    return err.message;
+  }
   if (err instanceof Anthropic.AuthenticationError) return 'Claude rejected the API key. Check the key and try again.';
   if (err instanceof Anthropic.PermissionDeniedError) return `Claude denied the request: ${err.message}`;
   if (err instanceof Anthropic.RateLimitError) return 'Claude is rate-limiting requests right now. Wait a moment and try again.';
@@ -143,7 +218,10 @@ export function describeError(err: unknown, options: DescribeErrorOptions = {}):
 }
 
 // ---------------------------------------------------------------------------
-// Tools (kept byte-identical across calls so the cached prefix is reused)
+// Tools. Chat and quiz calls send this exact list every time, byte-identical, so
+// they share one cached prefix. Guide and review documents go out without tools
+// (their prefix is cached on its own): a function call in the middle of a
+// document would end the stream and leave the document cut short.
 // ---------------------------------------------------------------------------
 
 const UPDATE_GUIDE_TOOL: Anthropic.Tool = {
@@ -309,11 +387,17 @@ function historyMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
-function baseRequest(ctx: AgentContext, model: ModelChain, messages: Anthropic.MessageParam[], maxTokens: number): LlmRequest {
+function baseRequest(
+  ctx: AgentContext,
+  model: ModelChain,
+  messages: Anthropic.MessageParam[],
+  maxTokens: number,
+  opts: { tools?: boolean } = {},
+): LlmRequest {
   return {
     model,
     system: systemPrompt(ctx.agentName ?? DEFAULT_AGENT_NAME),
-    tools: TOOLS,
+    tools: opts.tools === false ? undefined : TOOLS,
     maxTokens,
     effort: ctx.effort,
     // Thinking summaries are the model's own words and may name its maker, so white-label deployments do without them.
@@ -332,13 +416,43 @@ interface TurnHandlers {
   onToolStart?: (name: string) => void;
   /** In-call tool execution for providers that support it (see LlmHandlers.executeTool). */
   executeTool?: LlmHandlers['executeTool'];
+  /** The chain moved on to model `to` (so text streamed after this comes from it). */
+  onModelSwitch?: (to: string) => void;
+  /** The chain is about to start over from its first model. */
+  onWait?: () => void;
+}
+
+/** An error or failure reason on one line, short enough for a status line. */
+function shortReason(reason: string): string {
+  const line = reason.replace(/\s+/g, ' ').trim();
+  return line.length > 90 ? `${line.slice(0, 87)}…` : line;
+}
+
+function seconds(ms: number): number {
+  return Math.max(1, Math.round(ms / 1000));
 }
 
 function switchStatus(info: { from: string; to: string; reason: string }, showModels: boolean): string {
   if (!showModels) return 'Trying another model…';
-  const reason = info.reason.replace(/\s+/g, ' ').trim();
-  const short = reason.length > 90 ? `${reason.slice(0, 87)}…` : reason;
-  return `${displayModel(info.from)} unavailable (${short}); trying ${displayModel(info.to)}…`;
+  return `${displayModel(info.from)} unavailable (${shortReason(info.reason)}); trying ${displayModel(info.to)}…`;
+}
+
+/** Every model was busy: the chain waits and tries again. */
+function waitStatus(ctx: AgentContext, info: { ms: number; reason: string }): string {
+  const retry = `trying again in ${seconds(info.ms)} s…`;
+  if (!namesModels(ctx)) return `${agentNameOf(ctx)} is busy right now — ${retry}`;
+  return `All models are busy (${shortReason(info.reason)}) — ${retry}`;
+}
+
+/** The connection dropped after text was written: the core waits, then resumes. */
+function hiccupStatus(ctx: AgentContext, ms: number, err: unknown): string {
+  const wait = `${agentNameOf(ctx)} will pick up where it left off in ${seconds(ms)} s…`;
+  if (!namesModels(ctx)) return `Connection hiccup — ${wait}`;
+  return `Connection hiccup (${shortReason(describeError(err))}) — ${wait}`;
+}
+
+function resumingStatus(ctx: AgentContext): string {
+  return `Picking up where ${agentNameOf(ctx)} left off…`;
 }
 
 async function streamTurn(
@@ -348,11 +462,29 @@ async function streamTurn(
   send: Send | undefined,
   signal?: AbortSignal,
 ): Promise<LlmMessage> {
+  const { onModelSwitch, onWait, ...rest } = handlers;
   const llmHandlers: LlmHandlers = {
-    ...handlers,
-    onModelSwitch: (info) => send?.({ type: 'status', text: switchStatus(info, namesModels(ctx)) }),
+    ...rest,
+    onModelSwitch: (info) => {
+      onModelSwitch?.(info.to);
+      send?.({ type: 'status', text: switchStatus(info, namesModels(ctx)) });
+    },
+    onWait: (info) => {
+      onWait?.();
+      send?.({ type: 'status', text: waitStatus(ctx, info) });
+    },
   };
   return ctx.llm.stream(request, llmHandlers, signal);
+}
+
+/** ctx.sleep, turning an abort during the wait into `onAbort()`'s error. */
+async function waitOrStop(ctx: AgentContext, ms: number, signal: AbortSignal | undefined, onAbort: (err: unknown) => Error): Promise<void> {
+  try {
+    await (ctx.sleep ?? abortableSleep)(ms, signal);
+  } catch (err) {
+    if (signal?.aborted) throw onAbort(err);
+    throw err;
+  }
 }
 
 export function emptyUsage(): UsageInfo {
@@ -378,9 +510,6 @@ export function guideReadyMessage(version: number, words: number, model: string 
   return `📘 Study guide v${version} is ready (about ${words.toLocaleString()} words${by}). Open the **Study Guide** tab to read it, or tell me what to change, expand or explain.`;
 }
 
-const CONTINUE_PROMPT =
-  'Your response was cut off by the length limit. Continue exactly where you stopped, without repeating anything already written and without any preamble.';
-
 // ---------------------------------------------------------------------------
 // Documents: study guide and post-quiz review
 // ---------------------------------------------------------------------------
@@ -393,10 +522,27 @@ export interface DocumentResult {
   model: string;
 }
 
+/** Requests per document: the first answer plus its continuations and resumes. */
+const MAX_SEGMENTS = 6;
+/** Automatic resumes per document after a transient failure once text exists. */
+const MAX_RESUMES = 3;
+
+export interface StreamDocumentOptions {
+  /** Text written earlier (a saved partial document): the first request continues it instead of starting over. */
+  initialDraft?: string;
+}
+
 /**
- * Streams a long document, continuing past max_tokens cut-offs. If the model
- * declines or returns nothing before any text was streamed, the escalation
- * model gets one attempt (nothing has reached the UI yet, so it can start over).
+ * Streams a long document and sees it through to the end. The document grows
+ * over up to MAX_SEGMENTS requests: past the length limit, past answers the
+ * provider cut short (pause_turn) and, up to MAX_RESUMES times, past transient
+ * failures after text exists (a dropped connection, a stalled stream, a busy
+ * service). Each continuation restarts from a clean line outside any code fence
+ * and holds back its opening so a repeated tail or a preamble never reaches the
+ * page. If the model declines or returns nothing before any text exists, the
+ * escalation model gets one attempt from scratch. When the document cannot be
+ * finished but some of it exists, PartialDocumentError carries what the student
+ * saw so the caller can save it.
  */
 async function streamDocument(
   ctx: AgentContext,
@@ -407,57 +553,130 @@ async function streamDocument(
   what: string,
   send: Send,
   signal?: AbortSignal,
+  options: StreamDocumentOptions = {},
 ): Promise<DocumentResult> {
   const usage = emptyUsage();
+  const showModels = namesModels(ctx);
+  const target = deltaEvent === 'guide_delta' ? 'guide' : 'text';
+  let chain: ModelChain = model;
+  let used = primaryOf(model);
+  /** Exactly the text the student has been shown so far. */
+  let draft = options.initialDraft ?? '';
   let thinking = '';
+  /** Why the next request continues the draft; null while the document has not been started. */
+  let pending: ContinueReason | null = draft ? 'interrupted' : null;
+  let resumes = 0;
+  let escalated = false;
 
-  const attempt = async (activeModel: ModelChain): Promise<{ markdown: string; refusal: LlmMessage | null; used: string }> => {
-    const messages = [...initialMessages];
-    let markdown = '';
-    let used = primaryOf(activeModel);
-    for (let round = 0; round < 4; round++) {
-      const message = await streamTurn(
+  const partial = (reason: PartialReason, cause?: unknown) => new PartialDocumentError(reason, { markdown: draft, thinking, usage, model: used }, cause);
+  const finished = (): DocumentResult => ({ markdown: `${draft.trim()}\n`, thinking, usage, model: used });
+  const emptyError = () => new Error(`${(showModels && displayModel(used)) || 'The model'} returned an empty response while trying to ${what}. Please try again.`);
+  /** Nothing has reached the page yet, so the escalation model can start over (once). */
+  const escalate = (why: string): boolean => {
+    const fallback = escalated ? undefined : escalationFor(ctx, chain);
+    if (!fallback) return false;
+    send({ type: 'status', text: showModels ? `${displayModel(used)} ${why}; trying ${displayModel(fallback)}…` : 'Trying a stronger model…' });
+    chain = fallback;
+    used = fallback;
+    escalated = true;
+    pending = null;
+    return true;
+  };
+
+  if (draft) send({ type: 'status', text: resumingStatus(ctx) });
+
+  for (let segment = 0; segment < MAX_SEGMENTS; segment++) {
+    let messages = initialMessages;
+    let continuing = false;
+    if (pending) {
+      // Resume from a clean line break outside any code fence, so a diagram is never continued halfway.
+      const trimmed = trimToSafeBoundary(draft);
+      if (trimmed !== draft) {
+        draft = trimmed;
+        send({ type: 'draft', target, text: draft });
+      }
+      if (draft.trim()) {
+        continuing = true;
+        messages = [
+          ...initialMessages,
+          { role: 'assistant', content: draft },
+          { role: 'user', content: continuePrompt(pending, draft.slice(-TAIL_CHARS)) },
+        ];
+      }
+    }
+    // Later requests stay on the model that wrote the text, falling back only to the models after it.
+    const segmentModel: ModelChain = segment === 0 && !options.initialDraft ? chain : chainFrom(used, chain);
+    let attempting = primaryOf(segmentModel);
+    let wroteText = false;
+    const joiner = new ContinuationJoiner(
+      draft,
+      (text) => {
+        wroteText = true;
+        draft += text;
+        send({ type: deltaEvent, text });
+      },
+      continuing,
+    );
+
+    let message: LlmMessage;
+    try {
+      message = await streamTurn(
         ctx,
-        baseRequest(ctx, round === 0 ? activeModel : used, messages, maxTokens),
+        baseRequest(ctx, segmentModel, messages, maxTokens, { tools: false }),
         {
-          onText: (t) => {
-            markdown += t;
-            send({ type: deltaEvent, text: t });
-          },
+          onText: (t) => joiner.push(t),
           onThinking: (t) => {
             thinking += t;
             send({ type: 'thinking', text: t });
           },
+          onModelSwitch: (to) => (attempting = to),
+          onWait: () => (attempting = primaryOf(segmentModel)),
         },
         send,
         signal,
       );
-      used = message.ref;
-      addUsage(usage, message);
-      if (message.stop_reason === 'refusal') return { markdown, refusal: message, used };
-      if (message.stop_reason !== 'max_tokens') break;
-      messages.push({ role: 'assistant', content: message.content }, { role: 'user', content: CONTINUE_PROMPT });
-      send({ type: 'status', text: 'Continuing…' });
+    } catch (err) {
+      joiner.release();
+      if (wroteText) used = attempting;
+      if (signal?.aborted) {
+        if (draft.trim()) throw partial('stopped', err);
+        throw err;
+      }
+      // Nothing written anywhere yet: the chain has already retried, so fail as before.
+      if (!draft.trim()) throw err;
+      if (!isTransient(err)) throw partial('failed', err);
+      if (resumes >= MAX_RESUMES || segment + 1 >= MAX_SEGMENTS) throw partial('interrupted', err);
+      const ms = resumeDelay(resumes, err);
+      resumes += 1;
+      send({ type: 'status', text: hiccupStatus(ctx, ms, err) });
+      await waitOrStop(ctx, ms, signal, (abort) => partial('stopped', abort));
+      send({ type: 'status', text: resumingStatus(ctx) });
+      pending = 'interrupted';
+      continue;
     }
-    return { markdown, refusal: null, used };
-  };
+    joiner.release();
+    used = message.ref;
+    addUsage(usage, message);
 
-  let result = await attempt(model);
-  const fallback = escalationFor(ctx, model);
-  const showModels = namesModels(ctx);
-  if (fallback && !result.markdown.trim()) {
-    send({
-      type: 'status',
-      text: showModels ? `${displayModel(result.used)} ${result.refusal ? 'declined' : 'returned nothing'}; trying ${displayModel(fallback)}…` : 'Trying a stronger model…',
-    });
-    result = await attempt(fallback);
+    if (message.stop_reason === 'refusal') {
+      if (draft.trim()) throw partial('refused', refusalError(message, `finish the response while trying to ${what}`, showModels));
+      if (escalate('declined')) continue;
+      throw refusalError(message, what, showModels);
+    }
+    const reason = continuationReason(message);
+    if (!reason) {
+      if (draft.trim()) return finished();
+      if (escalate('returned nothing')) continue;
+      throw emptyError();
+    }
+    pending = reason;
+    send({ type: 'status', text: 'Continuing…' });
   }
-  if (result.refusal && !result.markdown.trim()) throw refusalError(result.refusal, what, showModels);
-  if (result.refusal) throw refusalError(result.refusal, `finish the response while trying to ${what}`, showModels);
-  if (!result.markdown.trim()) {
-    throw new Error(`${(showModels && displayModel(result.used)) || 'The model'} returned an empty response while trying to ${what}. Please try again.`);
-  }
-  return { markdown: `${result.markdown.trim()}\n`, thinking, usage, model: result.used };
+
+  if (!draft.trim()) throw emptyError();
+  // Out of requests. A document cut only by the length limit is kept as it stands (as before); anything else is unfinished.
+  if (pending === 'length') return finished();
+  throw partial('interrupted');
 }
 
 export async function generateGuide(
@@ -475,6 +694,37 @@ export async function generateReview(
 ): Promise<DocumentResult> {
   const messages = [...buildPrefix(opts.materials, opts.guide), { role: 'user' as const, content: reviewInstruction(opts.quiz) }];
   return streamDocument(ctx, ctx.models.review, messages, 32_000, 'text', 'write the review', opts.send, opts.signal);
+}
+
+/**
+ * Finishes a saved partial study guide or review: the same request that wrote it,
+ * continued from `draft`. The result's markdown is the whole document (the draft,
+ * cut back to a safe point, plus the continuation).
+ */
+export async function continueDocument(
+  ctx: AgentContext,
+  opts: {
+    kind: 'guide' | 'review';
+    materials: MaterialsInput;
+    guide: StudyGuide | null;
+    quiz?: Quiz;
+    draft: string;
+    send: Send;
+    signal?: AbortSignal;
+  },
+): Promise<DocumentResult> {
+  const continued = { initialDraft: opts.draft };
+  if (opts.kind === 'guide') {
+    if (!opts.guide) throw new Error('There is no study guide to continue.');
+    const messages = [...buildPrefix(opts.materials, null), { role: 'user' as const, content: guideInstruction(opts.guide.prompt) }];
+    // A guide written at maximum quality is finished by the same model (as when it is rewritten).
+    const escalation = ctx.escalationModel?.trim();
+    const model: ModelChain = escalation && opts.guide.model === escalation ? escalation : ctx.models.guide;
+    return streamDocument(ctx, model, messages, 64_000, 'guide_delta', 'write the study guide', opts.send, opts.signal, continued);
+  }
+  if (!opts.quiz) throw new Error('There is no quiz review to continue.');
+  const messages = [...buildPrefix(opts.materials, opts.guide), { role: 'user' as const, content: reviewInstruction(opts.quiz) }];
+  return streamDocument(ctx, ctx.models.review, messages, 32_000, 'text', 'write the review', opts.send, opts.signal, continued);
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +812,16 @@ async function executeTool(
   }
 }
 
+/** Extra requests for one chat turn that hit the length limit or was cut short. */
+const MAX_CHAT_CONTINUATIONS = 2;
+
+/**
+ * One chat turn with tools. An answer cut by the length limit or cut short by the
+ * provider is continued (up to MAX_CHAT_CONTINUATIONS times), and one dropped
+ * connection after text is resumed automatically. When the reply cannot be
+ * finished but text or tool results exist, PartialReplyError carries them so the
+ * caller can save the reply as incomplete.
+ */
 export async function runChat(
   ctx: AgentContext,
   opts: {
@@ -579,37 +839,93 @@ export async function runChat(
     ...historyMessages(opts.history),
     { role: 'user', content: opts.userMessage },
   ];
+  const chain: ModelChain = ctx.models.chat;
+  /** Exactly the reply text the student has been shown so far. */
   let text = '';
   let thinking = '';
   const toolEvents: ToolEvent[] = [];
   const usage = emptyUsage();
-  let model: ModelChain = ctx.models.chat;
+  let model: ModelChain = chain;
+  let continuations = 0;
+  let resumed = false;
+  /** The next request continues a cut-off answer: hold back its opening and join it to the text. */
+  let continuing = false;
+
+  const partial = (reason: PartialReason, cause?: unknown) =>
+    new PartialReplyError(reason, { text: text.trim(), thinking, toolEvents, usage }, cause);
+  /** Cuts this turn's text back to a safe point and asks the model (on `ref`, then the rest of the chain) for the rest. */
+  const continueTurn = (reason: ContinueReason, turnText: string, ref: string) => {
+    const kept = trimToSafeBoundary(turnText);
+    if (kept.length < turnText.length) {
+      text = text.slice(0, text.length - (turnText.length - kept.length));
+      opts.send({ type: 'draft', target: 'text', text });
+    }
+    // With nothing kept, the same request is simply sent again.
+    if (kept.trim()) messages.push({ role: 'assistant', content: kept }, { role: 'user', content: continuePrompt(reason, kept.slice(-TAIL_CHARS)) });
+    model = chainFrom(ref, chain);
+    continuing = kept.trim().length > 0;
+  };
 
   for (let iteration = 0; iteration < 8; iteration++) {
-    const message = await streamTurn(
-      ctx,
-      baseRequest(ctx, model, messages, 32_000),
-      {
-        onText: (t) => {
-          text += t;
-          opts.send({ type: 'text', text: t });
-        },
-        onThinking: (t) => {
-          thinking += t;
-          opts.send({ type: 'thinking', text: t });
-        },
-        onToolStart: (name) => opts.send({ type: 'status', text: TOOL_STATUS[name] ?? `Using ${name}…` }),
-        // Providers that run tools inside the call (the artifact runtime) execute them here and return the final text.
-        executeTool: async (block) => {
-          const { result, event } = await executeTool(block, opts.hooks, opts.send);
-          toolEvents.push(event);
-          opts.send({ type: 'tool', name: event.name, summary: event.summary });
-          return result;
-        },
+    let turnText = '';
+    let attempting = primaryOf(model);
+    const joiner = new ContinuationJoiner(
+      text,
+      (t) => {
+        turnText += t;
+        text += t;
+        opts.send({ type: 'text', text: t });
       },
-      opts.send,
-      opts.signal,
+      continuing,
     );
+    continuing = false;
+    const turnModel = model;
+
+    let message: LlmMessage;
+    try {
+      message = await streamTurn(
+        ctx,
+        baseRequest(ctx, turnModel, messages, 32_000),
+        {
+          onText: (t) => joiner.push(t),
+          onThinking: (t) => {
+            thinking += t;
+            opts.send({ type: 'thinking', text: t });
+          },
+          onToolStart: (name) => opts.send({ type: 'status', text: TOOL_STATUS[name] ?? `Using ${name}…` }),
+          // Providers that run tools inside the call (the artifact runtime) execute them here and return the final text.
+          executeTool: async (block) => {
+            const { result, event } = await executeTool(block, opts.hooks, opts.send);
+            toolEvents.push(event);
+            opts.send({ type: 'tool', name: event.name, summary: event.summary });
+            return result;
+          },
+          onModelSwitch: (to) => (attempting = to),
+          onWait: () => (attempting = primaryOf(turnModel)),
+        },
+        opts.send,
+        opts.signal,
+      );
+    } catch (err) {
+      joiner.release();
+      const saw = text.trim().length > 0 || toolEvents.length > 0;
+      if (opts.signal?.aborted) {
+        if (saw) throw partial('stopped', err);
+        throw err;
+      }
+      if (!resumed && turnText.trim() && isTransient(err)) {
+        resumed = true;
+        const ms = resumeDelay(0, err);
+        opts.send({ type: 'status', text: hiccupStatus(ctx, ms, err) });
+        await waitOrStop(ctx, ms, opts.signal, (abort) => partial('stopped', abort));
+        opts.send({ type: 'status', text: resumingStatus(ctx) });
+        continueTurn('interrupted', turnText, attempting);
+        continue;
+      }
+      if (saw) throw partial(isTransient(err) ? 'interrupted' : 'failed', err);
+      throw err;
+    }
+    joiner.release();
     addUsage(usage, message);
     // Later iterations of this turn stay on the model that answered (tool loops mix badly across providers).
     model = message.ref;
@@ -621,14 +937,24 @@ export async function runChat(
         model = fallback;
         continue;
       }
-      throw refusalError(message, 'answer this', namesModels(ctx));
+      const declined = refusalError(message, 'answer this', namesModels(ctx));
+      if (text.trim() || toolEvents.length) throw partial('refused', declined);
+      throw declined;
     }
-    if (message.stop_reason === 'pause_turn') {
-      messages.push({ role: 'assistant', content: message.content });
+    const toolUses = toolUseBlocks(message.content);
+    if (toolUses.length === 0) {
+      const reason = continuationReason(message);
+      if (!reason) break;
+      if (continuations >= MAX_CHAT_CONTINUATIONS) {
+        // An answer cut only by the length limit is kept as it stands; one cut short by the provider is unfinished.
+        if (reason === 'length' || !text.trim()) break;
+        throw partial('interrupted');
+      }
+      continuations += 1;
+      opts.send({ type: 'status', text: 'Continuing…' });
+      continueTurn(reason, turnText, message.ref);
       continue;
     }
-    const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-    if (toolUses.length === 0) break;
     if (message.stop_reason === 'max_tokens') {
       throw new Error('The response was cut off while editing the study guide. Please ask for a smaller change.');
     }
@@ -807,7 +1133,8 @@ export async function gradeShortAnswer(
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: gradePrompt(question, studentAnswer) }];
   const grade = (model: ModelChain) =>
     ctx.llm.stream(
-      { model, system: GRADER_SYSTEM, messages, maxTokens: 4000, effort: 'medium', outputSchema: { name: 'grade', schema } },
+      // Thinking tokens count against maxTokens on Gemini, so leave room for the JSON after them.
+      { model, system: GRADER_SYSTEM, messages, maxTokens: 8000, effort: 'medium', outputSchema: { name: 'grade', schema } },
       {},
     );
   const parse = (message: LlmMessage) => {

@@ -1,0 +1,68 @@
+/* ---------------------------------------------------------------------------
+   Unfinished documents and replies: the banner above a study guide or review
+   that stopped partway, and the Continue chip under a cut-off chat reply.
+--------------------------------------------------------------------------- */
+.incomplete-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: var(--primary-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+/* The review panel spaces its children with a flex gap already. */
+.review > .incomplete-banner {
+  margin-bottom: 0;
+}
+
+.incomplete-banner__buddy {
+  flex: none;
+}
+
+.incomplete-banner__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 500;
+}
+
+.incomplete-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Under the last chat message, aligned with the message text rather than the avatar. */
+.msg-continue {
+  display: flex;
+  padding-left: 40px;
+  margin-top: -6px;
+}
+
+.msg-continue .chip:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  .incomplete-banner {
+    flex-wrap: wrap;
+  }
+
+  .incomplete-banner__text {
+    flex-basis: calc(100% - 60px);
+  }
+
+  .incomplete-banner__actions {
+    width: 100%;
+  }
+
+  .incomplete-banner__actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

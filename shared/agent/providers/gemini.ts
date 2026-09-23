@@ -6,9 +6,21 @@
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import type { Effort } from '../constants.js';
-import { LlmError, emptyLlmUsage, toolResultText, type LlmClient, type LlmHandlers, type LlmMessage, type LlmRequest, type StopReason } from '../llm.js';
+import {
+  LlmError,
+  emptyLlmUsage,
+  kindForStatus,
+  retryAfterFromHeader,
+  toolResultText,
+  type LlmClient,
+  type LlmErrorKind,
+  type LlmHandlers,
+  type LlmMessage,
+  type LlmRequest,
+  type StopReason,
+} from '../llm.js';
 import { getPdfText } from './pdfText.js';
-import { readSseEvents } from './sse.js';
+import { DEFAULT_FIRST_BYTE_MS, fetchStream, isTransportError, readSseEvents, transportError, type StallOptions } from './sse.js';
 
 export interface GeminiOptions {
   /** e.g. https://generativelanguage.googleapis.com or a proxy path that forwards there. */
@@ -16,6 +28,8 @@ export interface GeminiOptions {
   apiKey?: string;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
+  /** Stall timeouts (defaults: 180 s to the first byte, 90 s between chunks). */
+  stall?: StallOptions;
 }
 
 /** Gemini 3 returns thought signatures on some parts; they must be sent back unchanged in later turns. */
@@ -131,35 +145,95 @@ export function buildGeminiBody(request: LlmRequest, model: string): Record<stri
   return body;
 }
 
-function mapFinish(reason: string | undefined, hasToolUse: boolean): { stop: StopReason; explanation?: string } {
-  switch (reason) {
-    case undefined:
-    case 'STOP':
-      return { stop: hasToolUse ? 'tool_use' : 'end_turn' };
-    case 'MAX_TOKENS':
-      return { stop: 'max_tokens' };
-    case 'MALFORMED_FUNCTION_CALL':
-      return { stop: 'end_turn', explanation: 'The model produced a malformed function call.' };
-    case 'SAFETY':
-    case 'RECITATION':
-    case 'BLOCKLIST':
-    case 'PROHIBITED_CONTENT':
-    case 'SPII':
-    case 'IMAGE_SAFETY':
-      return { stop: 'refusal', explanation: `Gemini stopped the response (${reason}).` };
-    default:
-      return { stop: 'end_turn', explanation: reason ? `Gemini finished with ${reason}.` : undefined };
+/** Finish reasons Gemini gives when it blocked its own answer for policy reasons. */
+const REFUSAL_REASONS = new Set(['SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY']);
+
+/**
+ * Maps Gemini's finishReason onto the stop reasons the core understands. Only STOP
+ * is a finished answer. RECITATION and the reasons that mean something went wrong
+ * (OTHER, FINISH_REASON_UNSPECIFIED, MALFORMED_FUNCTION_CALL, UNEXPECTED_TOOL_CALL,
+ * TOO_MANY_TOOL_CALLS, LANGUAGE and any value added later) become pause_turn, so a
+ * cut-off document is continued instead of being saved as complete. A complete
+ * answer always carries a finishReason on its last chunk, so output without one
+ * means the stream was cut. Exported for tests.
+ */
+export function mapFinish(reason: string | undefined, hasToolUse: boolean, hasOutput: boolean): { stop: StopReason; explanation?: string } {
+  if (reason === 'STOP') return { stop: hasToolUse ? 'tool_use' : 'end_turn' };
+  if (reason === 'MAX_TOKENS') return { stop: 'max_tokens' };
+  if (reason === 'RECITATION') return { stop: 'pause_turn', explanation: 'recitation' };
+  if (reason && REFUSAL_REASONS.has(reason)) return { stop: 'refusal', explanation: `Gemini stopped the response (${reason}).` };
+  if (reason === undefined && !hasOutput) return { stop: 'end_turn' };
+  return { stop: 'pause_turn', explanation: 'interrupted' };
+}
+
+/** The `error` object of a Gemini error response or stream chunk. */
+interface GeminiErrorBody {
+  code?: number;
+  message?: string;
+  status?: string;
+  details?: unknown[];
+}
+
+function parseErrorBody(text: string): GeminiErrorBody | null {
+  try {
+    const parsed = JSON.parse(text) as { error?: GeminiErrorBody } | { error?: GeminiErrorBody }[];
+    // Some gateways return the streaming endpoint's errors as a one-element array.
+    const error = Array.isArray(parsed) ? parsed[0]?.error : parsed.error;
+    return error && typeof error === 'object' ? error : null;
+  } catch {
+    return null;
   }
 }
 
 function errorMessage(status: number, text: string): string {
-  try {
-    const parsed = JSON.parse(text) as { error?: { message?: string; status?: string } };
-    if (parsed.error?.message) return `${parsed.error.message}${parsed.error.status ? ` (${parsed.error.status})` : ''}`;
-  } catch {
-    /* not JSON */
-  }
+  const error = parseErrorBody(text);
+  if (error?.message) return `${error.message}${error.status ? ` (${error.status})` : ''}`;
   return text.slice(0, 300) || `HTTP ${status}`;
+}
+
+/** A google.protobuf.Duration in its JSON form ("23s", "1.5s") in milliseconds. */
+function durationMs(value: unknown): number | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = /^\s*(\d+(?:\.\d+)?)s\s*$/.exec(value);
+  return match ? Math.round(Number(match[1]) * 1000) : undefined;
+}
+
+/**
+ * Reads the google.rpc details of an error: RetryInfo says how long to wait, and a
+ * QuotaFailure on a per-day quota means that waiting will not help until tomorrow.
+ * Falls back to the Retry-After header and the status. Exported for tests.
+ */
+export function geminiErrorInfo(
+  status: number | undefined,
+  error: GeminiErrorBody | null | undefined,
+  retryAfter?: string | null,
+): { kind?: LlmErrorKind; retryAfterMs?: number } {
+  let retryAfterMs: number | undefined;
+  let daily = false;
+  for (const detail of Array.isArray(error?.details) ? error.details : []) {
+    if (!detail || typeof detail !== 'object') continue;
+    const entry = detail as { '@type'?: unknown; retryDelay?: unknown; violations?: unknown };
+    const type = typeof entry['@type'] === 'string' ? entry['@type'] : '';
+    if (type.endsWith('google.rpc.RetryInfo')) {
+      retryAfterMs = durationMs(entry.retryDelay) ?? retryAfterMs;
+    } else if (type.endsWith('google.rpc.QuotaFailure') && Array.isArray(entry.violations)) {
+      daily ||= entry.violations.some((violation: { quotaId?: unknown; quotaMetric?: unknown } | null) =>
+        /PerDay/i.test(`${violation?.quotaId ?? ''} ${violation?.quotaMetric ?? ''}`),
+      );
+    }
+  }
+  retryAfterMs ??= retryAfterFromHeader(retryAfter);
+  return { kind: daily ? 'daily_quota' : kindForStatus(status ?? error?.code), retryAfterMs };
+}
+
+function geminiError(model: string, message: string, status: number | undefined, error: GeminiErrorBody | null, retryAfter?: string | null): LlmError {
+  return new LlmError(`Gemini (${model}): ${message}`, { provider: 'gemini', model, status, ...geminiErrorInfo(status, error, retryAfter) });
+}
+
+/** LlmError for a non-OK response; `text` is the body when it was already read. */
+async function httpError(model: string, response: Response, text?: string): Promise<LlmError> {
+  const body = text ?? (await response.text().catch(() => ''));
+  return geminiError(model, errorMessage(response.status, body), response.status, parseErrorBody(body), response.headers.get('retry-after'));
 }
 
 interface GeminiChunk {
@@ -169,7 +243,7 @@ interface GeminiChunk {
   }[];
   promptFeedback?: { blockReason?: string; blockReasonMessage?: string };
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number };
-  error?: { message?: string; status?: string; code?: number };
+  error?: GeminiErrorBody;
 }
 
 export class GeminiClient implements LlmClient {
@@ -177,6 +251,7 @@ export class GeminiClient implements LlmClient {
   private readonly apiKey?: string;
   private readonly headers: Record<string, string>;
   private readonly fetchImpl: typeof fetch;
+  private readonly stall: StallOptions;
   private static counter = 0;
 
   constructor(options: GeminiOptions) {
@@ -185,6 +260,7 @@ export class GeminiClient implements LlmClient {
     this.headers = options.headers ?? {};
     // Bound wrapper: a bare `fetch` reference called as a method throws "Illegal invocation" in browsers.
     this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
+    this.stall = options.stall ?? {};
   }
 
   async stream(request: LlmRequest, handlers: LlmHandlers, signal?: AbortSignal): Promise<LlmMessage> {
@@ -197,14 +273,14 @@ export class GeminiClient implements LlmClient {
       if (/thinking/i.test(text) && (body.generationConfig as Record<string, unknown>).thinkingConfig) {
         delete (body.generationConfig as Record<string, unknown>).thinkingConfig;
         response = await this.send(model, body, signal);
-        if (!response.ok) throw new LlmError(`Gemini (${model}): ${errorMessage(response.status, await response.text())}`, { provider: 'gemini', model, status: response.status });
+        if (!response.ok) throw await httpError(model, response);
       } else {
-        throw new LlmError(`Gemini (${model}): ${errorMessage(400, text)}`, { provider: 'gemini', model, status: 400 });
+        throw await httpError(model, response, text);
       }
     } else if (!response.ok) {
-      throw new LlmError(`Gemini (${model}): ${errorMessage(response.status, await response.text())}`, { provider: 'gemini', model, status: response.status });
+      throw await httpError(model, response);
     }
-    if (!response.body) throw new LlmError(`Gemini (${model}): empty response body`, { provider: 'gemini', model });
+    if (!response.body) throw new LlmError(`Gemini (${model}): empty response body`, { provider: 'gemini', model, kind: 'network' });
 
     const content: Anthropic.ContentBlock[] = [];
     let text: Anthropic.TextBlock | null = null;
@@ -213,66 +289,71 @@ export class GeminiClient implements LlmClient {
     let blocked: string | undefined;
     const usage = emptyLlmUsage();
 
-    for await (const event of readSseEvents(response.body)) {
-      let chunk: GeminiChunk;
-      try {
-        chunk = JSON.parse(event.data) as GeminiChunk;
-      } catch {
-        continue;
-      }
-      if (chunk.error) {
-        throw new LlmError(`Gemini (${model}): ${chunk.error.message ?? 'stream error'}`, { provider: 'gemini', model, status: chunk.error.code });
-      }
-      if (chunk.promptFeedback?.blockReason) blocked = chunk.promptFeedback.blockReasonMessage ?? chunk.promptFeedback.blockReason;
-      if (chunk.usageMetadata) {
-        usage.input_tokens = chunk.usageMetadata.promptTokenCount ?? usage.input_tokens;
-        usage.output_tokens = (chunk.usageMetadata.candidatesTokenCount ?? 0) + (chunk.usageMetadata.thoughtsTokenCount ?? 0);
-        usage.cache_read_input_tokens = chunk.usageMetadata.cachedContentTokenCount ?? 0;
-      }
-      const candidate = chunk.candidates?.[0];
-      if (!candidate) continue;
-      if (candidate.finishReason) finishReason = candidate.finishReason;
-      for (const part of candidate.content?.parts ?? []) {
-        if (part.functionCall) {
-          const block: Anthropic.ToolUseBlock = {
-            type: 'tool_use',
-            id: `gemini_${Date.now().toString(36)}_${(GeminiClient.counter += 1)}`,
-            name: part.functionCall.name,
-            input: part.functionCall.args ?? {},
-            caller: { type: 'direct' },
-          };
-          if (part.thoughtSignature) signatures.set(block, part.thoughtSignature);
-          content.push(block);
-          text = null;
-          thinking = null;
-          handlers.onToolStart?.(block.name);
+    try {
+      for await (const event of readSseEvents(response.body, this.stall)) {
+        let chunk: GeminiChunk;
+        try {
+          chunk = JSON.parse(event.data) as GeminiChunk;
+        } catch {
           continue;
         }
-        if (typeof part.text !== 'string') continue;
-        if (part.thought) {
-          if (!thinking) {
-            thinking = { type: 'thinking', thinking: '', signature: '' };
-            content.push(thinking);
+        if (chunk.error) {
+          throw geminiError(model, chunk.error.message ?? 'stream error', chunk.error.code, chunk.error);
+        }
+        if (chunk.promptFeedback?.blockReason) blocked = chunk.promptFeedback.blockReasonMessage ?? chunk.promptFeedback.blockReason;
+        if (chunk.usageMetadata) {
+          usage.input_tokens = chunk.usageMetadata.promptTokenCount ?? usage.input_tokens;
+          usage.output_tokens = (chunk.usageMetadata.candidatesTokenCount ?? 0) + (chunk.usageMetadata.thoughtsTokenCount ?? 0);
+          usage.cache_read_input_tokens = chunk.usageMetadata.cachedContentTokenCount ?? 0;
+        }
+        const candidate = chunk.candidates?.[0];
+        if (!candidate) continue;
+        if (candidate.finishReason) finishReason = candidate.finishReason;
+        for (const part of candidate.content?.parts ?? []) {
+          if (part.functionCall) {
+            const block: Anthropic.ToolUseBlock = {
+              type: 'tool_use',
+              id: `gemini_${Date.now().toString(36)}_${(GeminiClient.counter += 1)}`,
+              name: part.functionCall.name,
+              input: part.functionCall.args ?? {},
+              caller: { type: 'direct' },
+            };
+            if (part.thoughtSignature) signatures.set(block, part.thoughtSignature);
+            content.push(block);
+            text = null;
+            thinking = null;
+            handlers.onToolStart?.(block.name);
+            continue;
           }
-          thinking.thinking += part.text;
-          handlers.onThinking?.(part.text);
-        } else {
-          if (!text) {
-            text = { type: 'text', text: '', citations: null };
-            content.push(text);
+          if (typeof part.text !== 'string') continue;
+          if (part.thought) {
+            if (!thinking) {
+              thinking = { type: 'thinking', thinking: '', signature: '' };
+              content.push(thinking);
+            }
+            thinking.thinking += part.text;
+            handlers.onThinking?.(part.text);
+          } else {
+            if (!text) {
+              text = { type: 'text', text: '', citations: null };
+              content.push(text);
+            }
+            text.text += part.text;
+            if (part.thoughtSignature) signatures.set(text, part.thoughtSignature);
+            handlers.onText?.(part.text);
           }
-          text.text += part.text;
-          if (part.thoughtSignature) signatures.set(text, part.thoughtSignature);
-          handlers.onText?.(part.text);
         }
       }
+    } catch (err) {
+      // A dropped or stalled connection becomes a classified LlmError; errors from the content or the handlers pass through.
+      throw isTransportError(err) ? transportError(err, { provider: 'gemini', model, label: `Gemini (${model})`, signal }) : err;
     }
 
     if (blocked) {
       return { provider: 'gemini', model, ref: model, content, stop_reason: 'refusal', stop_details: { explanation: `Gemini blocked the request (${blocked}).` }, usage };
     }
     const hasToolUse = content.some((b) => b.type === 'tool_use');
-    const finish = mapFinish(finishReason, hasToolUse);
+    const finish = mapFinish(finishReason, hasToolUse, content.length > 0);
     return {
       provider: 'gemini',
       model,
@@ -284,10 +365,15 @@ export class GeminiClient implements LlmClient {
     };
   }
 
-  private send(model: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+  private async send(model: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
     const url = `${this.baseUrl}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
     const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'text/event-stream', ...this.headers };
     if (this.apiKey) headers['x-goog-api-key'] = this.apiKey;
-    return this.fetchImpl(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    const init: RequestInit = { method: 'POST', headers, body: JSON.stringify(body), signal };
+    try {
+      return await fetchStream(this.fetchImpl, url, init, this.stall.firstByteMs ?? DEFAULT_FIRST_BYTE_MS);
+    } catch (err) {
+      throw transportError(err, { provider: 'gemini', model, label: `Gemini (${model})`, signal });
+    }
   }
 }

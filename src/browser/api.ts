@@ -20,6 +20,7 @@ import {
   type SessionSummary,
   type StreamEvent,
   type StudyGuide,
+  type ToolEvent,
 } from '../../shared/types';
 import * as core from '../../shared/agent/core';
 import { displayModel } from '../../shared/agent/constants';
@@ -167,6 +168,116 @@ function findQuiz(quizzes: Quiz[], quizId: string): Quiz {
   const quiz = quizzes.find((q) => q.id === quizId);
   if (!quiz) throw new Error('Quiz not found');
   return quiz;
+}
+
+// ---------------------------------------------------------------------------
+// Partial results: what was written before a failure or Stop is saved, never lost
+// ---------------------------------------------------------------------------
+
+function agentNameOf(ctx: core.AgentContext): string {
+  return ctx.agentName?.trim() || core.DEFAULT_AGENT_NAME;
+}
+
+/** What to throw once a partial result is saved: the abort itself after Stop (the page shows no error), otherwise `message`. */
+function partialFailure(err: core.PartialDocumentError | core.PartialReplyError, message: string): unknown {
+  if (err.reason === 'stopped') return err.cause ?? new DOMException('The operation was aborted.', 'AbortError');
+  return new Error(message);
+}
+
+/**
+ * Saves a study guide that stopped partway, with a chat note that says how to
+ * finish it, and shows both. Returns the error to throw.
+ */
+async function savePartialGuide(
+  id: string,
+  ctx: core.AgentContext,
+  err: core.PartialDocumentError,
+  opts: { version: number; prompt: string; request?: ChatMessage; previous?: StudyGuide },
+  send: Send,
+): Promise<unknown> {
+  const agentName = agentNameOf(ctx);
+  const guide = core.partialGuide(err, { version: opts.version, prompt: opts.prompt, updatedAt: nowIso(), previous: opts.previous });
+  const note: ChatMessage = {
+    id: newId(),
+    role: 'assistant',
+    kind: 'guide',
+    content: core.guidePartialMessage(opts.version, wordCount(guide.markdown), agentName, err.stoppedReason),
+    thinking: err.thinking || undefined,
+    createdAt: nowIso(),
+  };
+  await updateSession(id, (s) => {
+    s.guide = guide;
+    if (opts.request) s.messages.push(opts.request);
+    s.messages.push(note);
+  });
+  send({ type: 'guide', guide });
+  send({ type: 'message', message: note });
+  send({ type: 'usage', usage: err.usage });
+  return partialFailure(err, core.partialSavedMessage(agentName, err.stoppedReason));
+}
+
+/** Saves a post-quiz review that stopped partway and shows it. Returns the error to throw. */
+async function savePartialReview(
+  id: string,
+  quizId: string,
+  ctx: core.AgentContext,
+  err: core.PartialDocumentError,
+  send: Send,
+  previous?: string,
+): Promise<unknown> {
+  const updated = await updateSession(id, (s) => {
+    const target = findQuiz(s.quizzes, quizId);
+    target.review = core.longerDraft(previous, err.markdown);
+    target.reviewGeneratedAt = nowIso();
+    target.reviewIncomplete = true;
+    if (target.status !== 'completed') {
+      target.status = 'completed';
+      target.completedAt = nowIso();
+    }
+  });
+  send({ type: 'review', quiz: findQuiz(updated.quizzes, quizId) });
+  send({ type: 'usage', usage: err.usage });
+  return partialFailure(err, core.partialSavedMessage(agentNameOf(ctx), err.stoppedReason));
+}
+
+/** Saves a finished review with its announcement in the chat, and shows both. */
+async function saveFinishedReview(id: string, quiz: Quiz, result: core.DocumentResult, onEvent: Send): Promise<void> {
+  const correct = quiz.answers.filter((a) => a.correct).length;
+  const userMessage: ChatMessage = {
+    id: newId(),
+    role: 'user',
+    kind: 'quiz-review',
+    content: `I completed the quiz "${quiz.title}" and scored ${correct}/${quiz.answers.length}. Please review my performance.`,
+    createdAt: nowIso(),
+  };
+  const assistantMessage: ChatMessage = {
+    id: newId(),
+    role: 'assistant',
+    kind: 'quiz-review',
+    content: result.markdown,
+    thinking: result.thinking || undefined,
+    createdAt: nowIso(),
+  };
+  const updated = await updateSession(id, (s) => {
+    const target = findQuiz(s.quizzes, quiz.id);
+    target.review = result.markdown;
+    target.reviewGeneratedAt = nowIso();
+    target.reviewIncomplete = false;
+    if (target.status !== 'completed') {
+      target.status = 'completed';
+      target.completedAt = nowIso();
+    }
+    s.messages.push(userMessage, assistantMessage);
+  });
+  onEvent({ type: 'review', quiz: findQuiz(updated.quizzes, quiz.id) });
+  onEvent({ type: 'message', message: assistantMessage });
+  onEvent({ type: 'usage', usage: result.usage });
+  onEvent({ type: 'done' });
+}
+
+/** The saved text of a reply that produced no text of its own. */
+function replyFallback(toolEvents: ToolEvent[]): string {
+  return toolEvents.length ? toolEvents.map((e) => `✅ ${e.summary}`).join('\n') : '(No response text was produced. Please try again.)';
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +449,14 @@ export const browserApi: Api = {
       const model = quality === 'max' ? ctx.escalationModel : undefined;
       onEvent({ type: 'status', text: materials.info.length ? 'Reading your materials…' : 'Starting…' });
       onEvent({ type: 'guide_start', version });
-      const result = await core.generateGuide(ctx, { materials, prompt: text, send: onEvent, signal, model });
+      let result: core.DocumentResult;
+      try {
+        result = await core.generateGuide(ctx, { materials, prompt: text, send: onEvent, signal, model });
+      } catch (err) {
+        if (!(err instanceof core.PartialDocumentError)) throw err;
+        const request: ChatMessage = { id: newId(), role: 'user', content: text, createdAt: nowIso(), kind: 'guide' };
+        throw await savePartialGuide(id, ctx, err, { version, prompt: text, request }, onEvent);
+      }
       const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt: text, model: result.model };
       const userMessage: ChatMessage = { id: newId(), role: 'user', content: text, createdAt: nowIso(), kind: 'guide' };
       const assistantMessage: ChatMessage = {
@@ -355,6 +473,42 @@ export const browserApi: Api = {
       });
       onEvent({ type: 'guide', guide });
       onEvent({ type: 'message', message: assistantMessage });
+      onEvent({ type: 'usage', usage: result.usage });
+      onEvent({ type: 'done' });
+    }),
+
+  continueGuide: (id, onEvent, signal) =>
+    streaming(signal, async () => {
+      const session = await requireSession(id);
+      const guide = session.guide;
+      if (!guide?.incomplete) throw new Error('This study guide is already complete.');
+      const ctx = context();
+      const materials = await materialsInput(id);
+      onEvent({ type: 'status', text: `Picking up where ${agentNameOf(ctx)} left off…` });
+      onEvent({ type: 'guide_start', version: guide.version });
+      onEvent({ type: 'draft', target: 'guide', text: guide.markdown });
+      let result: core.DocumentResult;
+      try {
+        result = await core.continueDocument(ctx, { kind: 'guide', materials, guide, draft: guide.markdown, send: onEvent, signal });
+      } catch (err) {
+        if (!(err instanceof core.PartialDocumentError)) throw err;
+        throw await savePartialGuide(id, ctx, err, { version: guide.version, prompt: guide.prompt, previous: guide }, onEvent);
+      }
+      const finished: StudyGuide = { markdown: result.markdown, version: guide.version, updatedAt: nowIso(), prompt: guide.prompt, model: result.model, incomplete: false };
+      const note: ChatMessage = {
+        id: newId(),
+        role: 'assistant',
+        kind: 'guide',
+        content: core.guideReadyMessage(guide.version, wordCount(finished.markdown), result.model, ctx.showModels !== false),
+        thinking: result.thinking || undefined,
+        createdAt: nowIso(),
+      };
+      await updateSession(id, (s) => {
+        s.guide = finished;
+        s.messages.push(note);
+      });
+      onEvent({ type: 'guide', guide: finished });
+      onEvent({ type: 'message', message: note });
       onEvent({ type: 'usage', usage: result.usage });
       onEvent({ type: 'done' });
     }),
@@ -400,7 +554,15 @@ export const browserApi: Api = {
           // A guide written at maximum quality stays on the escalation model when rewritten.
           const model = current.guide?.model && current.guide.model === ctx.escalationModel ? ctx.escalationModel : undefined;
           send({ type: 'guide_start', version });
-          const result = await core.generateGuide(ctx, { materials, prompt, send, signal, model });
+          let result: core.DocumentResult;
+          try {
+            result = await core.generateGuide(ctx, { materials, prompt, send, signal, model });
+          } catch (err) {
+            if (!(err instanceof core.PartialDocumentError)) throw err;
+            // The partial guide is kept; the tool result tells the model (and the student) what happened.
+            const failure = await savePartialGuide(id, ctx, err, { version, prompt }, send);
+            throw err.reason === 'stopped' ? err : failure;
+          }
           const guide: StudyGuide = { markdown: result.markdown, version, updatedAt: nowIso(), prompt, model: result.model };
           await updateSession(id, (s) => void (s.guide = guide));
           send({ type: 'guide', guide });
@@ -413,23 +575,40 @@ export const browserApi: Api = {
         },
       };
 
-      const result = await core.runChat(ctx, {
-        materials,
-        guide: session.guide,
-        history: session.messages,
-        userMessage: text,
-        hooks,
-        send,
-        signal,
-      });
-      const fallback = result.toolEvents.length
-        ? result.toolEvents.map((e) => `✅ ${e.summary}`).join('\n')
-        : '(No response text was produced. Please try again.)';
+      let result: core.ChatResult;
+      try {
+        result = await core.runChat(ctx, {
+          materials,
+          guide: session.guide,
+          history: session.messages,
+          userMessage: text,
+          hooks,
+          send,
+          signal,
+        });
+      } catch (err) {
+        if (!(err instanceof core.PartialReplyError)) throw err;
+        // Keep what the student already read; the Continue chip asks for the rest.
+        const partialMessage: ChatMessage = {
+          id: newId(),
+          role: 'assistant',
+          kind: 'chat',
+          content: err.text || replyFallback(err.toolEvents),
+          thinking: err.thinking || undefined,
+          toolEvents: err.toolEvents.length ? err.toolEvents : undefined,
+          incomplete: true,
+          createdAt: nowIso(),
+        };
+        await updateSession(id, (s) => void s.messages.push(partialMessage));
+        send({ type: 'message', message: partialMessage });
+        send({ type: 'usage', usage: err.usage });
+        throw partialFailure(err, core.replyCutOffMessage(agentNameOf(ctx)));
+      }
       const assistantMessage: ChatMessage = {
         id: newId(),
         role: 'assistant',
         kind: 'chat',
-        content: result.text || fallback,
+        content: result.text || replyFallback(result.toolEvents),
         thinking: result.thinking || undefined,
         toolEvents: result.toolEvents.length ? result.toolEvents : undefined,
         createdAt: nowIso(),
@@ -532,37 +711,33 @@ export const browserApi: Api = {
       const ctx = context();
       const materials = await materialsInput(id);
       onEvent({ type: 'status', text: 'Reviewing your answers…' });
-      const result = await core.generateReview(ctx, { materials, guide: session.guide, quiz, send: onEvent, signal });
-      const correct = quiz.answers.filter((a) => a.correct).length;
-      const userMessage: ChatMessage = {
-        id: newId(),
-        role: 'user',
-        kind: 'quiz-review',
-        content: `I completed the quiz "${quiz.title}" and scored ${correct}/${quiz.answers.length}. Please review my performance.`,
-        createdAt: nowIso(),
-      };
-      const assistantMessage: ChatMessage = {
-        id: newId(),
-        role: 'assistant',
-        kind: 'quiz-review',
-        content: result.markdown,
-        thinking: result.thinking || undefined,
-        createdAt: nowIso(),
-      };
-      const updated = await updateSession(id, (s) => {
-        const target = findQuiz(s.quizzes, quizId);
-        target.review = result.markdown;
-        target.reviewGeneratedAt = nowIso();
-        if (target.status !== 'completed') {
-          target.status = 'completed';
-          target.completedAt = nowIso();
-        }
-        s.messages.push(userMessage, assistantMessage);
-      });
-      onEvent({ type: 'review', quiz: findQuiz(updated.quizzes, quizId) });
-      onEvent({ type: 'message', message: assistantMessage });
-      onEvent({ type: 'usage', usage: result.usage });
-      onEvent({ type: 'done' });
+      let result: core.DocumentResult;
+      try {
+        result = await core.generateReview(ctx, { materials, guide: session.guide, quiz, send: onEvent, signal });
+      } catch (err) {
+        if (!(err instanceof core.PartialDocumentError)) throw err;
+        throw await savePartialReview(id, quizId, ctx, err, onEvent);
+      }
+      await saveFinishedReview(id, quiz, result, onEvent);
+    }),
+
+  continueReview: (id, quizId, onEvent, signal) =>
+    streaming(signal, async () => {
+      const session = await requireSession(id);
+      const quiz = findQuiz(session.quizzes, quizId);
+      if (!quiz.reviewIncomplete || !quiz.review) throw new Error('This review is already complete.');
+      const ctx = context();
+      const materials = await materialsInput(id);
+      onEvent({ type: 'status', text: `Picking up where ${agentNameOf(ctx)} left off…` });
+      onEvent({ type: 'draft', target: 'text', text: quiz.review });
+      let result: core.DocumentResult;
+      try {
+        result = await core.continueDocument(ctx, { kind: 'review', materials, guide: session.guide, quiz, draft: quiz.review, send: onEvent, signal });
+      } catch (err) {
+        if (!(err instanceof core.PartialDocumentError)) throw err;
+        throw await savePartialReview(id, quizId, ctx, err, onEvent, quiz.review);
+      }
+      await saveFinishedReview(id, quiz, result, onEvent);
     }),
 
   deleteQuiz: (id, quizId) => updateSession(id, (s) => void (s.quizzes = s.quizzes.filter((q) => q.id !== quizId))),

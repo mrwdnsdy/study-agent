@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, Square, Trash2, User, Wrench } from 'lucide-react';
 import type { ChatMessage, Session } from '../../shared/types';
 import type { StreamState } from '../state';
@@ -12,6 +12,9 @@ interface QuickAction {
   prefill?: string;
   action?: 'guide';
 }
+
+/** Sent by the Continue chip under a reply that was cut off. */
+const CONTINUE_MESSAGE = 'Please continue your last answer exactly where it stopped.';
 
 const QUICK_ACTIONS: QuickAction[] = [
   { label: '📘 Generate study guide', action: 'guide' },
@@ -57,7 +60,8 @@ function ToolChips({ events }: { events: { summary: string }[] | undefined }) {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+/** Memoised: while a reply streams, the saved messages above it do not re-render (their Markdown is costly). */
+const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   return (
     <div className={`msg msg--${message.role}${message.kind && message.kind !== 'chat' ? ` msg--${message.kind}` : ''}`}>
@@ -74,7 +78,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       </div>
     </div>
   );
-}
+});
 
 export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend, onStop, onClear, onGenerateGuide, agentName }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -118,6 +122,8 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
   };
 
   const liveKind = stream.kind;
+  const last = session.messages[session.messages.length - 1];
+  const cutOff = last?.role === 'assistant' && last.incomplete === true;
 
   return (
     <div className="chat__inner">
@@ -161,6 +167,13 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
         {session.messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
+        {cutOff && (
+          <div className="msg-continue">
+            <button type="button" className="chip" disabled={busy} onClick={() => onSend(CONTINUE_MESSAGE)} title="Let the reply finish">
+              Continue
+            </button>
+          </div>
+        )}
         {liveKind && (
           <div className="msg msg--assistant msg--live">
             <div className="msg__avatar">

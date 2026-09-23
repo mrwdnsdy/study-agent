@@ -6,8 +6,10 @@ import { relativeTime, titleFromMarkdown, wordCount } from '../lib/format';
 import { tableOfContents } from '../lib/toc';
 import type { StreamState, Toast } from '../state';
 import { ExportMenu } from './ExportMenu';
+import { IncompleteBanner } from './IncompleteBanner';
 import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
+import './resilience.css';
 
 interface Props {
   session: Session;
@@ -19,8 +21,30 @@ interface Props {
   showModels?: boolean;
   agentName: string;
   onGenerate: (prompt: string, quality: GuideQuality) => void;
+  /** Finishes a guide that stopped partway (session.guide.incomplete). */
+  onContinue: () => void;
   onStop: () => void;
   onToast: (toast: Toast) => void;
+}
+
+const TOC_KEY = 'kiiku:toc';
+
+/** The reader's last choice for the contents panel, if they made one (storage can be unavailable). */
+function storedToc(): boolean | null {
+  try {
+    const value = localStorage.getItem(TOC_KEY);
+    return value === null ? null : value === '1';
+  } catch {
+    return null;
+  }
+}
+
+function storeToc(show: boolean): void {
+  try {
+    localStorage.setItem(TOC_KEY, show ? '1' : '0');
+  } catch {
+    /* private mode or storage disabled: the choice lasts until reload */
+  }
 }
 
 function basePrompt(prompt: string | undefined): string {
@@ -95,9 +119,15 @@ function PromptForm({
   );
 }
 
-export function GuideView({ session, stream, busy, models, escalationModel, showModels = true, agentName, onGenerate, onStop, onToast }: Props) {
+export function GuideView({ session, stream, busy, models, escalationModel, showModels = true, agentName, onGenerate, onContinue, onStop, onToast }: Props) {
   const [showRegenerate, setShowRegenerate] = useState(false);
-  const [showToc, setShowToc] = useState(true);
+  // Open by default only where there is room for it beside the guide.
+  const [showToc, setShowToc] = useState(() => storedToc() ?? window.matchMedia('(min-width: 1440px)').matches);
+  const toggleToc = () => {
+    const next = !showToc;
+    setShowToc(next);
+    storeToc(next);
+  };
   const streamingGuide = stream.guideDraft !== null;
   const markdown = streamingGuide ? stream.guideDraft! : (session.guide?.markdown ?? '');
   const toc = useMemo(() => (streamingGuide || !markdown ? [] : tableOfContents(markdown, 3)), [markdown, streamingGuide]);
@@ -174,7 +204,7 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
           </span>
         </div>
         <div className="guide__actions">
-          <button type="button" className={`btn btn--ghost${showToc ? ' is-active' : ''}`} onClick={() => setShowToc((v) => !v)} title="Table of contents">
+          <button type="button" className={`btn btn--ghost${showToc ? ' is-active' : ''}`} onClick={toggleToc} title="Table of contents">
             <ListTree size={16} /> Contents
           </button>
           <button type="button" className="btn btn--ghost" onClick={() => setShowRegenerate((v) => !v)} disabled={busy}>
@@ -183,6 +213,15 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
           <ExportMenu markdown={markdown} title={title} subtitle={`Study guide · ${session.title}`} onToast={onToast} />
         </div>
       </div>
+      {session.guide.incomplete && (
+        <IncompleteBanner
+          agentName={agentName}
+          reason={session.guide.stoppedReason}
+          busy={busy}
+          onContinue={onContinue}
+          onRegenerate={() => setShowRegenerate(true)}
+        />
+      )}
       {showRegenerate && (
         <div className="guide__regenerate">
           <PromptForm

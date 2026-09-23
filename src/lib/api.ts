@@ -26,11 +26,15 @@ export interface Api {
   uploadMaterials(id: string, files: File[]): Promise<Session>;
   deleteMaterial(id: string, materialId: string): Promise<Session>;
   generateGuide(id: string, prompt: string, onEvent: OnEvent, signal?: AbortSignal, quality?: GuideQuality): Promise<void>;
+  /** Finishes a study guide that stopped partway (guide.incomplete). */
+  continueGuide(id: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   chat(id: string, message: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   createQuiz(id: string, config: QuizConfig, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   answerQuestion(id: string, quizId: string, body: AnswerRequest): Promise<AnswerResponse>;
   completeQuiz(id: string, quizId: string): Promise<Quiz>;
   reviewQuiz(id: string, quizId: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
+  /** Finishes a post-quiz review that stopped partway (quiz.reviewIncomplete). */
+  continueReview(id: string, quizId: string, onEvent: OnEvent, signal?: AbortSignal): Promise<void>;
   deleteQuiz(id: string, quizId: string): Promise<Session>;
 }
 
@@ -67,6 +71,7 @@ export const serverApi: Api = {
     request<Session>(`/api/sessions/${id}/materials/${materialId}`, { method: 'DELETE' }),
 
   generateGuide: (id, prompt, onEvent, signal, quality) => streamSse(`/api/sessions/${id}/generate`, { prompt, quality }, onEvent, signal),
+  continueGuide: (id, onEvent, signal) => streamSse(`/api/sessions/${id}/guide/continue`, {}, onEvent, signal),
   chat: (id, message, onEvent, signal) => streamSse(`/api/sessions/${id}/chat`, { message }, onEvent, signal),
 
   createQuiz: (id, config, onEvent, signal) => streamSse(`/api/sessions/${id}/quizzes`, config, onEvent, signal),
@@ -74,6 +79,7 @@ export const serverApi: Api = {
     request<AnswerResponse>(`/api/sessions/${id}/quizzes/${quizId}/answers`, jsonInit('POST', body)),
   completeQuiz: (id, quizId) => request<Quiz>(`/api/sessions/${id}/quizzes/${quizId}/complete`, { method: 'POST' }),
   reviewQuiz: (id, quizId, onEvent, signal) => streamSse(`/api/sessions/${id}/quizzes/${quizId}/review`, {}, onEvent, signal),
+  continueReview: (id, quizId, onEvent, signal) => streamSse(`/api/sessions/${id}/quizzes/${quizId}/review/continue`, {}, onEvent, signal),
   deleteQuiz: (id, quizId) => request<Session>(`/api/sessions/${id}/quizzes/${quizId}`, { method: 'DELETE' }),
 };
 

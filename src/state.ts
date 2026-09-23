@@ -160,6 +160,11 @@ function applyEvent(state: AppState, event: StreamEvent): AppState {
         tab: state.tab === 'chat' || state.tab === 'materials' ? state.tab : 'guide',
         stream: { ...stream, guideDraft: '', guideVersion: event.version, status: 'Writing your study guide…' },
       };
+    case 'draft':
+      // The saved draft a continuation starts from, or the draft cut back to a safe point before a resume.
+      return event.target === 'guide'
+        ? { ...state, stream: { ...stream, guideDraft: event.text } }
+        : { ...state, stream: { ...stream, text: event.text } };
     case 'guide':
       return {
         ...state,

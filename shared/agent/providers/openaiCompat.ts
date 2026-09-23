@@ -7,9 +7,20 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ProviderId } from '../../types.js';
 import type { Effort } from '../constants.js';
-import { LlmError, emptyLlmUsage, toolResultText, type LlmClient, type LlmHandlers, type LlmMessage, type LlmRequest, type StopReason } from '../llm.js';
+import {
+  LlmError,
+  emptyLlmUsage,
+  kindForStatus,
+  retryAfterFromHeader,
+  toolResultText,
+  type LlmClient,
+  type LlmHandlers,
+  type LlmMessage,
+  type LlmRequest,
+  type StopReason,
+} from '../llm.js';
 import { getPdfText } from './pdfText.js';
-import { readSseEvents } from './sse.js';
+import { DEFAULT_FIRST_BYTE_MS, fetchStream, isTransportError, readSseEvents, transportError, type StallOptions } from './sse.js';
 
 export interface OpenAICompatCapabilities {
   /** The endpoint enforces response_format json_schema. Otherwise json_object plus instructions is used. */
@@ -28,6 +39,8 @@ export interface OpenAICompatOptions {
   headers?: Record<string, string>;
   fetch?: typeof fetch;
   capabilities: OpenAICompatCapabilities;
+  /** Stall timeouts (defaults: 180 s to the first byte, 90 s between chunks). */
+  stall?: StallOptions;
 }
 
 export const CAPABILITIES: Record<Exclude<ProviderId, 'anthropic' | 'gemini' | 'artifact'>, OpenAICompatCapabilities> = {
@@ -179,22 +192,37 @@ export class OpenAICompatClient implements LlmClient {
     const body = buildChatBody(request, model, capabilities);
     const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'text/event-stream', ...(this.options.headers ?? {}) };
     if (this.options.apiKey) headers.authorization = `Bearer ${this.options.apiKey}`;
-    const response = await this.fetchImpl(`${this.options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!response.ok) {
-      throw new LlmError(`${model}: ${errorMessage(response.status, await response.text())}`, { provider, model, status: response.status });
+    const stall = this.options.stall ?? {};
+    const failure = (err: unknown) => transportError(err, { provider, model, label: model, signal });
+    let response: Response;
+    try {
+      response = await fetchStream(
+        this.fetchImpl,
+        `${this.options.baseUrl.replace(/\/+$/, '')}/chat/completions`,
+        { method: 'POST', headers, body: JSON.stringify(body), signal },
+        stall.firstByteMs ?? DEFAULT_FIRST_BYTE_MS,
+      );
+    } catch (err) {
+      throw failure(err);
     }
-    if (!response.body) throw new LlmError(`${model}: empty response body`, { provider, model });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new LlmError(`${model}: ${errorMessage(response.status, text)}`, {
+        provider,
+        model,
+        status: response.status,
+        kind: kindForStatus(response.status),
+        retryAfterMs: retryAfterFromHeader(response.headers.get('retry-after')),
+      });
+    }
+    if (!response.body) throw new LlmError(`${model}: empty response body`, { provider, model, kind: 'network' });
 
     const content: Anthropic.ContentBlock[] = [];
     let text: Anthropic.TextBlock | null = null;
     let thinking: Anthropic.ThinkingBlock | null = null;
     const calls = new Map<number, { block: Anthropic.ToolUseBlock; args: string }>();
     let finishReason: string | null | undefined;
+    let done = false;
     const usage = emptyLlmUsage();
 
     const pushThinking = (delta: string) => {
@@ -207,61 +235,70 @@ export class OpenAICompatClient implements LlmClient {
       handlers.onThinking?.(delta);
     };
 
-    for await (const event of readSseEvents(response.body)) {
-      if (event.data.trim() === '[DONE]') break;
-      let chunk: ChatChunk;
-      try {
-        chunk = JSON.parse(event.data) as ChatChunk;
-      } catch {
-        continue;
-      }
-      if (chunk.error) {
-        const message = typeof chunk.error === 'string' ? chunk.error : (chunk.error.message ?? 'stream error');
-        throw new LlmError(`${model}: ${message}`, { provider, model, status: typeof chunk.error === 'object' ? chunk.error.code : undefined });
-      }
-      if (chunk.usage) {
-        usage.input_tokens = chunk.usage.prompt_tokens ?? usage.input_tokens;
-        usage.output_tokens = chunk.usage.completion_tokens ?? usage.output_tokens;
-        usage.cache_read_input_tokens = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
-      }
-      const choice = chunk.choices?.[0];
-      if (!choice) continue;
-      if (choice.finish_reason) finishReason = choice.finish_reason;
-      const delta = choice.delta;
-      if (!delta) continue;
-      if (typeof delta.reasoning === 'string') pushThinking(delta.reasoning);
-      if (typeof delta.reasoning_content === 'string') pushThinking(delta.reasoning_content);
-      for (const detail of delta.reasoning_details ?? []) if (typeof detail.text === 'string') pushThinking(detail.text);
-      if (typeof delta.content === 'string' && delta.content) {
-        if (!text) {
-          text = { type: 'text', text: '', citations: null };
-          content.push(text);
+    try {
+      for await (const event of readSseEvents(response.body, stall)) {
+        if (event.data.trim() === '[DONE]') {
+          done = true;
+          break;
         }
-        text.text += delta.content;
-        handlers.onText?.(delta.content);
-      }
-      for (const call of delta.tool_calls ?? []) {
-        const index = call.index ?? 0;
-        let entry = calls.get(index);
-        if (!entry) {
-          const block: Anthropic.ToolUseBlock = {
-            type: 'tool_use',
-            id: call.id || `call_${Date.now().toString(36)}_${(OpenAICompatClient.counter += 1)}`,
-            name: call.function?.name ?? '',
-            input: {},
-            caller: { type: 'direct' },
-          };
-          entry = { block, args: '' };
-          calls.set(index, entry);
-          content.push(block);
-          text = null;
-          if (block.name) handlers.onToolStart?.(block.name);
-        } else if (call.function?.name && !entry.block.name) {
-          entry.block.name = call.function.name;
-          handlers.onToolStart?.(entry.block.name);
+        let chunk: ChatChunk;
+        try {
+          chunk = JSON.parse(event.data) as ChatChunk;
+        } catch {
+          continue;
         }
-        if (call.function?.arguments) entry.args += call.function.arguments;
+        if (chunk.error) {
+          const message = typeof chunk.error === 'string' ? chunk.error : (chunk.error.message ?? 'stream error');
+          const status = typeof chunk.error === 'object' ? chunk.error.code : undefined;
+          throw new LlmError(`${model}: ${message}`, { provider, model, status, kind: kindForStatus(status) });
+        }
+        if (chunk.usage) {
+          usage.input_tokens = chunk.usage.prompt_tokens ?? usage.input_tokens;
+          usage.output_tokens = chunk.usage.completion_tokens ?? usage.output_tokens;
+          usage.cache_read_input_tokens = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        }
+        const choice = chunk.choices?.[0];
+        if (!choice) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        const delta = choice.delta;
+        if (!delta) continue;
+        if (typeof delta.reasoning === 'string') pushThinking(delta.reasoning);
+        if (typeof delta.reasoning_content === 'string') pushThinking(delta.reasoning_content);
+        for (const detail of delta.reasoning_details ?? []) if (typeof detail.text === 'string') pushThinking(detail.text);
+        if (typeof delta.content === 'string' && delta.content) {
+          if (!text) {
+            text = { type: 'text', text: '', citations: null };
+            content.push(text);
+          }
+          text.text += delta.content;
+          handlers.onText?.(delta.content);
+        }
+        for (const call of delta.tool_calls ?? []) {
+          const index = call.index ?? 0;
+          let entry = calls.get(index);
+          if (!entry) {
+            const block: Anthropic.ToolUseBlock = {
+              type: 'tool_use',
+              id: call.id || `call_${Date.now().toString(36)}_${(OpenAICompatClient.counter += 1)}`,
+              name: call.function?.name ?? '',
+              input: {},
+              caller: { type: 'direct' },
+            };
+            entry = { block, args: '' };
+            calls.set(index, entry);
+            content.push(block);
+            text = null;
+            if (block.name) handlers.onToolStart?.(block.name);
+          } else if (call.function?.name && !entry.block.name) {
+            entry.block.name = call.function.name;
+            handlers.onToolStart?.(entry.block.name);
+          }
+          if (call.function?.arguments) entry.args += call.function.arguments;
+        }
       }
+    } catch (err) {
+      // A dropped or stalled connection becomes a classified LlmError; errors from the content or the handlers pass through.
+      throw isTransportError(err) ? failure(err) : err;
     }
 
     for (const { block, args } of calls.values()) {
@@ -272,14 +309,20 @@ export class OpenAICompatClient implements LlmClient {
       }
     }
     const hasToolUse = calls.size > 0;
-    const stop = mapFinish(finishReason, hasToolUse);
+    // Without [DONE] and without a finish_reason, a stream that produced output was cut off, not finished.
+    const interrupted = !done && !finishReason && content.length > 0;
+    const stop: StopReason = interrupted ? 'pause_turn' : mapFinish(finishReason, hasToolUse);
     return {
       provider,
       model,
       ref: model,
       content,
       stop_reason: stop,
-      stop_details: stop === 'refusal' ? { explanation: 'The provider stopped the response for content policy reasons.' } : null,
+      stop_details: interrupted
+        ? { explanation: 'interrupted' }
+        : stop === 'refusal'
+          ? { explanation: 'The provider stopped the response for content policy reasons.' }
+          : null,
       usage,
     };
   }

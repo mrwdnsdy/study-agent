@@ -73,6 +73,8 @@ export interface ChatMessage {
   /** Summarized model reasoning (assistant messages only). */
   thinking?: string;
   toolEvents?: ToolEvent[];
+  /** The reply was cut off (stopped, or the connection failed) before it was finished. */
+  incomplete?: boolean;
 }
 
 export interface StudyGuide {
@@ -83,6 +85,10 @@ export interface StudyGuide {
   prompt: string;
   /** Model that wrote this version. */
   model?: string;
+  /** Writing stopped before the guide was finished; what exists is saved and can be continued. */
+  incomplete?: boolean;
+  /** Why writing stopped, as a short neutral phrase: "connection problem", "stopped by you", "the free limit was reached". */
+  stoppedReason?: string;
 }
 
 export type QuestionType = 'multiple_choice' | 'true_false' | 'short_answer';
@@ -140,6 +146,8 @@ export interface Quiz {
   /** Post-quiz review. Markdown. */
   review?: string;
   reviewGeneratedAt?: string;
+  /** The review stopped before it was finished; what exists is saved and can be continued. */
+  reviewIncomplete?: boolean;
 }
 
 export interface Session {
@@ -160,13 +168,15 @@ export interface UsageInfo {
   cacheWriteTokens: number;
 }
 
-/** Server-sent events streamed by /generate, /chat and /quiz/:id/review. */
+/** Server-sent events streamed by /generate, /chat, /quiz/:id/review and the /continue routes. */
 export type StreamEvent =
   | { type: 'status'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'text'; text: string }
   | { type: 'guide_start'; version: number }
   | { type: 'guide_delta'; text: string }
+  /** Replaces the streamed guide draft or text: the saved draft when continuing, or a draft cut back to a safe point before a resume. */
+  | { type: 'draft'; target: 'guide' | 'text'; text: string }
   | { type: 'guide'; guide: StudyGuide }
   | { type: 'tool'; name: string; summary: string }
   | { type: 'quiz'; quiz: Quiz }

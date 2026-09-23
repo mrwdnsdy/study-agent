@@ -16,7 +16,20 @@ import { CAPABILITIES, OpenAICompatClient } from '../../shared/agent/providers/o
 import { setPdfText } from '../../shared/agent/providers/pdfText.js';
 import type { ExtractedMaterial, MaterialPart } from './extract.js';
 
-export { buildQuiz, describeError, gradeChoice, basePrompt, guideReadyMessage } from '../../shared/agent/core.js';
+export {
+  PartialDocumentError,
+  PartialReplyError,
+  basePrompt,
+  buildQuiz,
+  describeError,
+  gradeChoice,
+  guidePartialMessage,
+  guideReadyMessage,
+  longerDraft,
+  partialGuide,
+  partialSavedMessage,
+  replyCutOffMessage,
+} from '../../shared/agent/core.js';
 export type { ChatHooks, ChatResult, DocumentResult, QuizInput, UpdateGuideInput } from '../../shared/agent/core.js';
 
 let cachedClient: Anthropic | null = null;
@@ -150,6 +163,19 @@ export async function generateReview(opts: {
   signal?: AbortSignal;
 }): Promise<core.DocumentResult> {
   return core.generateReview(context(), { ...opts, materials: await materialsInput(opts.materials) });
+}
+
+/** Finishes a saved partial study guide or review (see core.continueDocument). */
+export async function continueDocument(opts: {
+  kind: 'guide' | 'review';
+  materials: ExtractedMaterial[];
+  guide: StudyGuide | null;
+  quiz?: Quiz;
+  draft: string;
+  send: Send;
+  signal?: AbortSignal;
+}): Promise<core.DocumentResult> {
+  return core.continueDocument(context(), { ...opts, materials: await materialsInput(opts.materials) });
 }
 
 export async function runChat(opts: {

@@ -4,6 +4,7 @@ import type { Quiz, Session } from '../../shared/types';
 import { percent } from '../lib/format';
 import { topicScores, weakTopics, type StreamState, type Toast } from '../state';
 import { ExportMenu } from './ExportMenu';
+import { IncompleteBanner } from './IncompleteBanner';
 import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 
@@ -15,6 +16,8 @@ interface Props {
   activeQuizId: string | null;
   onSelectQuiz: (quizId: string) => void;
   onReview: (quizId: string) => void;
+  /** Finishes a review that stopped partway (quiz.reviewIncomplete). */
+  onContinueReview: (quizId: string) => void;
   onQuizWeakAreas: (focus: string) => void;
   onAskChat: (prefill: string) => void;
   onToast: (toast: Toast) => void;
@@ -25,7 +28,7 @@ function scoreLine(quiz: Quiz): string {
   return `${correct}/${quiz.answers.length} correct (${percent(correct, quiz.answers.length)}%)`;
 }
 
-export function ReviewPanel({ session, stream, busy, agentName, activeQuizId, onSelectQuiz, onReview, onQuizWeakAreas, onAskChat, onToast }: Props) {
+export function ReviewPanel({ session, stream, busy, agentName, activeQuizId, onSelectQuiz, onReview, onContinueReview, onQuizWeakAreas, onAskChat, onToast }: Props) {
   const completed = useMemo(
     () => session.quizzes.filter((q) => q.answers.length > 0).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [session.quizzes],
@@ -91,6 +94,10 @@ export function ReviewPanel({ session, stream, busy, agentName, activeQuizId, on
           </div>
         )}
       </div>
+
+      {selected?.reviewIncomplete && selected.review && !streaming && (
+        <IncompleteBanner agentName={agentName} busy={busy} onContinue={() => onContinueReview(selected.id)} onRegenerate={() => onReview(selected.id)} />
+      )}
 
       {streaming ? (
         <div className="card review__doc">

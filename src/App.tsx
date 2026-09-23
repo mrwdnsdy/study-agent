@@ -15,6 +15,18 @@ import { initialState, reducer, type StreamKind, type Tab, type Toast } from './
 
 type StreamStarter = (onEvent: (event: StreamEvent) => void, signal: AbortSignal) => Promise<void>;
 
+/**
+ * Keeps the screen on while something streams: a phone that sleeps mid-guide drops
+ * the connection. Resolves to null where the Wake Lock API is missing or refused.
+ */
+async function requestWakeLock(): Promise<WakeLockSentinel | null> {
+  try {
+    return (await navigator.wakeLock?.request('screen')) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const TABS: { id: Tab; label: string; icon: typeof BookOpen; mobileOnly?: boolean }[] = [
   { id: 'materials', label: 'Materials', icon: FolderOpen, mobileOnly: true },
   { id: 'guide', label: 'Guide', icon: BookOpen },
@@ -98,6 +110,7 @@ export default function App() {
       const controller = new AbortController();
       streamRef.current = controller;
       dispatch({ type: 'stream/start', kind });
+      const wakeLock = requestWakeLock();
 
       const buffer = { text: '', thinking: '', guide: '' };
       let timer: number | null = null;
@@ -141,6 +154,7 @@ export default function App() {
       } catch (err) {
         if (!controller.signal.aborted) fail(err);
       } finally {
+        void wakeLock.then((sentinel) => sentinel?.release()).catch(() => undefined);
         flush();
         dispatch({ type: 'stream/end' });
         streamRef.current = null;
@@ -167,6 +181,13 @@ export default function App() {
     void runStream('generate', (onEvent, signal) => api.generateGuide(id, prompt, onEvent, signal, quality));
   };
 
+  const continueGuide = () => {
+    const id = requireSessionId();
+    if (!id) return;
+    dispatch({ type: 'tab', tab: 'guide' });
+    void runStream('generate', (onEvent, signal) => api.continueGuide(id, onEvent, signal));
+  };
+
   const sendChat = (message: string) => {
     const id = requireSessionId();
     if (!id) return;
@@ -188,6 +209,14 @@ export default function App() {
     dispatch({ type: 'quiz/select', quizId });
     dispatch({ type: 'tab', tab: 'review' });
     void runStream('review', (onEvent, signal) => api.reviewQuiz(id, quizId, onEvent, signal));
+  };
+
+  const continueReview = (quizId: string) => {
+    const id = requireSessionId();
+    if (!id) return;
+    dispatch({ type: 'quiz/select', quizId });
+    dispatch({ type: 'tab', tab: 'review' });
+    void runStream('review', (onEvent, signal) => api.continueReview(id, quizId, onEvent, signal));
   };
 
   const answerQuestion = async (quizId: string, body: AnswerRequest) => {
@@ -413,6 +442,7 @@ export default function App() {
                   showModels={config?.showModels !== false}
                   agentName={agentName}
                   onGenerate={generateGuide}
+                  onContinue={continueGuide}
                   onStop={stopStream}
                   onToast={toast}
                 />
@@ -446,6 +476,7 @@ export default function App() {
                   activeQuizId={state.activeQuizId}
                   onSelectQuiz={(quizId) => dispatch({ type: 'quiz/select', quizId })}
                   onReview={reviewQuiz}
+                  onContinueReview={continueReview}
                   onQuizWeakAreas={(focus) => createQuiz({ numQuestions: 8, difficulty: 'mixed', types: ['multiple_choice', 'true_false', 'short_answer'], focus })}
                   onAskChat={askInChat}
                   onToast={toast}
