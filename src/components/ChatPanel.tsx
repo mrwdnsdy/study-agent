@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, Square, Trash2, User, Wrench } from 'lucide-react';
 import type { ChatMessage, Session } from '../../shared/types';
-import type { StreamState } from '../state';
+import type { StreamState, Toast } from '../state';
+import { ChatExportButton } from './ChatExportButton';
 import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
 import { confirmAction } from '../lib/confirm';
@@ -44,6 +45,7 @@ interface Props {
   onStop: () => void;
   onClear: () => void;
   onGenerateGuide: () => void;
+  onToast: (toast: Toast) => void;
   agentName: string;
 }
 
@@ -80,7 +82,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: ChatMe
   );
 });
 
-export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend, onStop, onClear, onGenerateGuide, agentName }: Props) {
+export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend, onStop, onClear, onGenerateGuide, onToast, agentName }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [stick, setStick] = useState(true);
@@ -132,19 +134,22 @@ export function ChatPanel({ session, stream, busy, draft, onDraftChange, onSend,
           <strong>{agentName}</strong>
           <div className="muted small">Ask anything about your materials. It can edit the guide and build quizzes.</div>
         </div>
-        <button
-          type="button"
-          className="icon-btn"
-          title="Clear chat"
-          disabled={busy || session.messages.length === 0}
-          onClick={() => {
-            void confirmAction('Clear the chat transcript? The study guide, materials and quizzes are kept.').then((ok) => {
-              if (ok) onClear();
-            });
-          }}
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="chat__header-actions">
+          <ChatExportButton session={session} agentName={agentName} onToast={onToast} />
+          <button
+            type="button"
+            className="icon-btn"
+            title="Clear chat"
+            disabled={busy || session.messages.length === 0}
+            onClick={() => {
+              void confirmAction('Clear the chat transcript? The study guide, materials and quizzes are kept.').then((ok) => {
+                if (ok) onClear();
+              });
+            }}
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       </div>
 
       <div

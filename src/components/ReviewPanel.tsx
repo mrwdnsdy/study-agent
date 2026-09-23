@@ -90,7 +90,7 @@ export function ReviewPanel({ session, stream, busy, agentName, activeQuizId, on
             >
               <MessageSquare size={16} /> Discuss in chat
             </button>
-            <ExportMenu markdown={selected.review} title={`Post-quiz review — ${selected.title}`} subtitle={session.title} onToast={onToast} />
+            <ExportMenu markdown={selected.review} title={`Review — ${selected.title}`} subtitle={session.title} folder={session.title} onToast={onToast} />
           </div>
         )}
       </div>

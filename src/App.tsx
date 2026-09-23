@@ -501,6 +501,7 @@ export default function App() {
               onStop={stopStream}
               onClear={clearChat}
               onGenerateGuide={() => generateGuide(session.guide ? (session.guide.prompt.split('\n\nRevision instructions:')[0] ?? DEFAULT_GUIDE_PROMPT) : DEFAULT_GUIDE_PROMPT)}
+              onToast={toast}
               agentName={agentName}
             />
           )}

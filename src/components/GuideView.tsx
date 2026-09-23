@@ -9,6 +9,7 @@ import { ExportMenu } from './ExportMenu';
 import { IncompleteBanner } from './IncompleteBanner';
 import { KiikuBuddy } from './Kiiku';
 import { Markdown } from './Markdown';
+import { SaveAllToDrive } from './SaveAllToDrive';
 import './resilience.css';
 
 interface Props {
@@ -210,7 +211,8 @@ export function GuideView({ session, stream, busy, models, escalationModel, show
           <button type="button" className="btn btn--ghost" onClick={() => setShowRegenerate((v) => !v)} disabled={busy}>
             <RefreshCw size={16} /> Regenerate
           </button>
-          <ExportMenu markdown={markdown} title={title} subtitle={`Study guide · ${session.title}`} onToast={onToast} />
+          <SaveAllToDrive session={session} agentName={agentName} onToast={onToast} />
+          <ExportMenu markdown={markdown} title={title} subtitle={`Study guide · ${session.title}`} folder={session.title} onToast={onToast} />
         </div>
       </div>
       {session.guide.incomplete && (
