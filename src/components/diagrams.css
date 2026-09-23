@@ -1,0 +1,165 @@
+/* ---------------------------------------------------------------------------
+   Diagram cards: toolbar, notices, full-screen view and captions.
+   The card and the full-screen view stay white in both themes (diagrams are
+   drawn for a light background), so the controls on them carry their own
+   themed surface instead of inheriting the page colours.
+--------------------------------------------------------------------------- */
+.diagram__toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.diagram:hover .diagram__toolbar,
+.diagram:focus-within .diagram__toolbar {
+  opacity: 1;
+}
+
+.diagram__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.diagram__tool:hover:not(:disabled) {
+  background: var(--tint);
+}
+
+.diagram__tool:focus-visible,
+.diagram-lightbox__close:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.diagram__tool:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Touch screens have no hover: keep the toolbar visible and the targets larger. */
+@media (hover: none) {
+  .diagram__toolbar {
+    opacity: 1;
+  }
+
+  .diagram__tool {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+.diagram__notice {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+}
+
+/* The italic caption the guide puts right after each diagram (tagged by Markdown.tsx). */
+.md .diagram-caption {
+  max-width: 62ch;
+  margin: -8px auto 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Full-screen view -------------------------------------------------------- */
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
+  overscroll-behavior: contain;
+}
+
+.diagram-lightbox__card {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  padding: 48px 20px 20px;
+  border-radius: var(--radius);
+  background: var(--diagram-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.diagram-lightbox__stage svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.diagram-lightbox__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.diagram-lightbox__close:hover {
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagram__toolbar {
+    transition: none;
+  }
+}
+
+@media print {
+  .diagram__toolbar,
+  .diagram__notice {
+    display: none;
+  }
+
+  /* Paper cannot scroll sideways: wide diagrams shrink to the page (overriding the inline size). */
+  .diagram__svg {
+    overflow: visible;
+  }
+
+  .diagram__svg svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
